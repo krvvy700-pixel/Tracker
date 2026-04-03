@@ -28,13 +28,10 @@ export interface CleanedItem {
 
 function normalizePhone(phone: string): string {
   if (!phone) return '';
-  // Remove all non-digit characters
   let cleaned = phone.replace(/\D/g, '');
-  // Remove country code prefix (91 for India)
   if (cleaned.length > 10 && cleaned.startsWith('91')) {
     cleaned = cleaned.slice(2);
   }
-  // Return last 10 digits
   return cleaned.slice(-10);
 }
 
@@ -62,9 +59,9 @@ export function cleanCSVData(rawRows: Record<string, string>[]): {
 
     if (orderMap.has(orderId)) {
       // Multi-line-item order — just add the item
+      // Don't re-sum total — we already grabbed the correct Shopify total
       const existing = orderMap.get(orderId)!;
       existing.items.push(item);
-      existing.order_total += item.price * item.quantity;
     } else {
       // New order
       const customerName =
@@ -78,6 +75,11 @@ export function cleanCSVData(rawRows: Record<string, string>[]): {
 
       const paymentMethod = cleanString(row[CSV_COLUMN_MAP.payment_method]);
       const cancelledAt = cleanString(row[CSV_COLUMN_MAP.cancelled_at]);
+
+      // ═══ FIX: Use Shopify's "Total" column (actual order total with discounts) ═══
+      // Fall back to line item price only if Total column is missing
+      const shopifyTotal = parseFloat(cleanString(row[CSV_COLUMN_MAP.order_total])) || 0;
+      const orderTotal = shopifyTotal > 0 ? shopifyTotal : item.price * item.quantity;
 
       const order: CleanedOrder = {
         order_id: orderId,
@@ -94,7 +96,7 @@ export function cleanCSVData(rawRows: Record<string, string>[]): {
         state: cleanString(row[CSV_COLUMN_MAP.state]),
         pincode: cleanString(row[CSV_COLUMN_MAP.pincode]),
         is_cancelled: !!cancelledAt,
-        order_total: item.price * item.quantity,
+        order_total: orderTotal,
         items: [item],
       };
 

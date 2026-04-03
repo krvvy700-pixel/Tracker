@@ -1168,9 +1168,36 @@ a {
    TRACKING PAGE (public)
    ═══════════════════════════════════════════ */
 
+/* Remix 2-column layout */
+.remix-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .remix-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.remix-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.remix-right {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
 .tracking-page {
   min-height: 100vh;
   background: var(--bg-subtle);
+  display: flex;
+  flex-direction: column;
 }
 
 .tracking-header {
@@ -1179,9 +1206,9 @@ a {
 }
 
 .tracking-header-inner {
-  max-width: 48rem;
+  max-width: 72rem;
   margin: 0 auto;
-  padding: 1rem;
+  padding: 0.75rem 1rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -1219,9 +1246,10 @@ a {
 }
 
 .tracking-body {
-  max-width: 48rem;
+  max-width: 72rem;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 1.5rem 1rem;
+  flex: 1;
 }
 
 .tracking-footer {

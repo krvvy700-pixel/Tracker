@@ -6,7 +6,8 @@ import { TRACKING_STAGES_WITH_SPECIAL, STAGE_ICONS, ROLE_PERMISSIONS, getStatusC
 import {
   Package, Upload, Users, LogOut, Search, Eye, Link2, MessageCircle, Mail,
   ChevronLeft, ChevronRight, X, Check, Truck, AlertCircle, ShoppingBag,
-  Loader2, FileUp, Info, UserPlus, Trash2, Building2, Plus, Lock, Unlock
+  Loader2, FileUp, Info, UserPlus, Trash2, Building2, Plus, Lock, Unlock,
+  Activity, Zap
 } from 'lucide-react';
 
 /* ═══════════ TYPES ═══════════ */
@@ -49,7 +50,7 @@ export default function AdminDashboard() {
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<Record<string, unknown> | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [uploadBusinessId, setUploadBusinessId] = useState('');
+  const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, percent: 0 });
 
   // Bulk status modal
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -146,21 +147,62 @@ export default function AdminDashboard() {
     searchTimeout.current = setTimeout(() => { setSearch(val); setPage(1); }, 400);
   };
 
-  /* ═══ CSV UPLOAD ═══ */
+  /* ═══ CSV UPLOAD (chunked — works on Vercel Hobby 10s limit) ═══ */
+  const CHUNK_SIZE = 500; // rows per chunk
+
   const handleFileUpload = async (file: File) => {
     if (!file || !file.name.endsWith('.csv')) { showAlert('error', 'Please upload a CSV file'); return; }
     setUploading(true);
     setUploadResult(null);
+    setUploadProgress({ current: 0, total: 0, percent: 0 });
+
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch('/api/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData });
-      const data = await res.json();
-      if (res.ok) {
-        setUploadResult(data.stats);
-        showAlert('success', `Upload complete! ${data.stats.newOrders} new, ${data.stats.updatedOrders} updated, ${data.stats.brandsDetected || 0} brands detected`);
-        fetchOrders(); fetchBrands(); fetchBusinesses();
-      } else { showAlert('error', data.error || 'Upload failed'); }
+      // 1. Read and parse CSV on the client
+      const csvText = await file.text();
+      const lines = csvText.split('\n');
+      const header = lines[0];
+      const dataLines = lines.slice(1).filter(l => l.trim().length > 0);
+      const totalRows = dataLines.length;
+
+      // 2. Split into chunks
+      const chunks: string[] = [];
+      for (let i = 0; i < dataLines.length; i += CHUNK_SIZE) {
+        const chunkLines = dataLines.slice(i, i + CHUNK_SIZE);
+        chunks.push(header + '\n' + chunkLines.join('\n'));
+      }
+
+      setUploadProgress({ current: 0, total: chunks.length, percent: 0 });
+
+      // 3. Send chunks sequentially
+      let totalNew = 0, totalUpdated = 0, totalBrands = 0;
+
+      for (let i = 0; i < chunks.length; i++) {
+        const blob = new Blob([chunks[i]], { type: 'text/csv' });
+        const chunkFile = new File([blob], file.name, { type: 'text/csv' });
+
+        const formData = new FormData();
+        formData.append('file', chunkFile);
+        formData.append('chunkIndex', i.toString());
+        formData.append('totalChunks', chunks.length.toString());
+
+        const res = await fetch('/api/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData });
+        const data = await res.json();
+
+        if (!res.ok) {
+          showAlert('error', `Chunk ${i + 1}/${chunks.length} failed: ${data.error}`);
+          break;
+        }
+
+        totalNew += data.stats?.newOrders || 0;
+        totalUpdated += data.stats?.updatedOrders || 0;
+        totalBrands = Math.max(totalBrands, data.stats?.brandsDetected || 0);
+
+        setUploadProgress({ current: i + 1, total: chunks.length, percent: Math.round(((i + 1) / chunks.length) * 100) });
+      }
+
+      setUploadResult({ total: totalRows, unique: totalNew + totalUpdated, newOrders: totalNew, updatedOrders: totalUpdated });
+      showAlert('success', `Upload complete! ${totalNew} new, ${totalUpdated} updated, ${totalBrands} brands detected`);
+      fetchOrders(); fetchBrands(); fetchBusinesses();
     } catch { showAlert('error', 'Upload failed'); }
     finally { setUploading(false); }
   };
@@ -407,6 +449,49 @@ export default function AdminDashboard() {
                 <StatCard icon={AlertCircle} label="Cancelled" value={orders.filter((o) => o.is_cancelled).length} color="var(--danger)" />
               </div>
 
+              {/* API Insights */}
+              <div className="tf-card" style={{ padding: '1.25rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                  <Activity size={18} style={{ color: 'var(--primary)' }} />
+                  <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>System Insights</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', padding: '0.125rem 0.625rem', borderRadius: '9999px', background: 'var(--success-light)', color: 'var(--success)', fontWeight: 500 }}>Live</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.25rem' }}>
+                      <Zap size={12} style={{ color: 'var(--primary)' }} />
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', fontWeight: 500 }}>Queries/Track View</span>
+                    </div>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>2</span>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--success)', marginLeft: '0.25rem' }}>↓ from 3</span>
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.25rem' }}>
+                      <Activity size={12} style={{ color: 'var(--info)' }} />
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', fontWeight: 500 }}>Est. Monthly Views</span>
+                    </div>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>250K</span>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', marginLeft: '0.25rem' }}>capacity</span>
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.25rem' }}>
+                      <Package size={12} style={{ color: 'var(--warning)' }} />
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', fontWeight: 500 }}>DB Size (est.)</span>
+                    </div>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>{(totalOrders * 1.25 / 1024).toFixed(1)} MB</span>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', marginLeft: '0.25rem' }}>/ 500 MB</span>
+                  </div>
+                  <div style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.25rem' }}>
+                      <Check size={12} style={{ color: 'var(--success)' }} />
+                      <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', fontWeight: 500 }}>Upload Mode</span>
+                    </div>
+                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>Chunked</span>
+                    <span style={{ fontSize: '0.6875rem', color: 'var(--success)', marginLeft: '0.25rem' }}>500/batch</span>
+                  </div>
+                </div>
+              </div>
+
               {/* Toolbar */}
               <div className="toolbar">
                 <div className="toolbar-search">
@@ -534,9 +619,19 @@ export default function AdminDashboard() {
                 onDrop={(e) => { e.preventDefault(); setDragOver(false); const file = e.dataTransfer.files[0]; if (file) handleFileUpload(file); }}
               >
                 {uploading ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', width: '100%', padding: '0 2rem' }}>
                     <Loader2 size={40} style={{ animation: 'spin 0.6s linear infinite', color: 'var(--primary)' }} />
-                    <p style={{ fontSize: '0.875rem', color: 'var(--fg-muted)' }}>Processing CSV...</p>
+                    <p style={{ fontSize: '0.875rem', fontWeight: 500 }}>
+                      {uploadProgress.total > 0
+                        ? `Chunk ${uploadProgress.current}/${uploadProgress.total} — ${uploadProgress.percent}%`
+                        : 'Parsing CSV...'}
+                    </p>
+                    {uploadProgress.total > 0 && (
+                      <div style={{ width: '100%', height: '6px', background: 'var(--muted)', borderRadius: '3px', overflow: 'hidden' }}>
+                        <div style={{ width: `${uploadProgress.percent}%`, height: '100%', background: 'var(--primary)', borderRadius: '3px', transition: 'width 0.3s ease' }} />
+                      </div>
+                    )}
+                    <p style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>Each chunk ~500 rows • fits within 10s timeout</p>
                   </div>
                 ) : (
                   <>

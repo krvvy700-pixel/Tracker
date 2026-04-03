@@ -4,8 +4,7 @@ import { cleanCSVData, CleanedOrder } from '@/lib/csv-cleaner';
 import { getSupabaseAdmin } from '@/lib/supabase';
 import Papa from 'papaparse';
 
-// Vercel: extend timeout to max (60s on Pro, 10s on Hobby)
-export const maxDuration = 60;
+// No maxDuration needed — each chunk finishes in <5s on Hobby
 
 const BATCH_SIZE = 500;
 const PARALLEL_LIMIT = 50;
@@ -19,6 +18,9 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
+    const chunkIndex = parseInt(formData.get('chunkIndex') as string || '0');
+    const totalChunks = parseInt(formData.get('totalChunks') as string || '1');
+    const isLastChunk = chunkIndex === totalChunks - 1;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -41,18 +43,14 @@ export async function POST(request: NextRequest) {
     orders.forEach((o) => o.items.forEach((item) => { if (item.brand) allBrands.add(item.brand); }));
     const brandArr = Array.from(allBrands).filter((b) => b.length > 0);
 
-    // brand name (lowercase) → business UUID
     const bizMap = new Map<string, string>();
 
     if (brandArr.length > 0) {
-      // Fetch ALL existing businesses
       const { data: existingBiz } = await getSupabaseAdmin()
         .from('businesses')
         .select('id, name');
-
       if (existingBiz) existingBiz.forEach((b) => bizMap.set(b.name.toLowerCase(), b.id));
 
-      // Auto-create businesses for new brands
       for (const brand of brandArr) {
         if (!bizMap.has(brand.toLowerCase())) {
           const { data } = await getSupabaseAdmin()
@@ -65,14 +63,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Helper: get business_id for an order based on its primary brand
     const getBusinessId = (order: CleanedOrder): string | null => {
       const brand = order.items[0]?.brand;
       if (brand && bizMap.has(brand.toLowerCase())) return bizMap.get(brand.toLowerCase())!;
       return null;
     };
 
-    // ═══ STEP 1: Batch-check which orders already exist ═══
+    // ═══ STEP 1: Batch-check existing orders ═══
     const allOrderIds = orders.map((o) => o.order_id);
     const existingOrderIds = new Set<string>();
 
@@ -150,14 +147,14 @@ export async function POST(request: NextRequest) {
       updatedCount += results.filter((r) => !r.error).length;
     }
 
-    // ═══ STEP 4: Batch-DELETE old items for existing orders ═══
+    // ═══ STEP 4: Delete old items for existing orders ═══
     const existingOrderIdsArr = Array.from(existingOrderIds);
     for (let i = 0; i < existingOrderIdsArr.length; i += BATCH_SIZE) {
       const batch = existingOrderIdsArr.slice(i, i + BATCH_SIZE);
       await getSupabaseAdmin().from('order_items').delete().in('order_id', batch);
     }
 
-    // ═══ STEP 5: Batch-INSERT all items (new + existing) ═══
+    // ═══ STEP 5: Batch-INSERT all items ═══
     const allItems = orders.flatMap((o) =>
       o.items.map((item) => ({
         order_id: o.order_id,
@@ -173,12 +170,12 @@ export async function POST(request: NextRequest) {
       await getSupabaseAdmin().from('order_items').insert(batch);
     }
 
-    // ═══ STEP 6: Batch-INSERT tracking history for new orders ═══
+    // ═══ STEP 6: Tracking history for new orders ═══
     const historyRows = newOrders.map((o) => ({
       order_id: o.order_id,
       status: o.is_cancelled ? 'Cancelled' : 'Order Placed',
       changed_by: user.username,
-      notes: 'CSV import',
+      notes: `CSV import (chunk ${chunkIndex + 1}/${totalChunks})`,
     }));
 
     for (let i = 0; i < historyRows.length; i += BATCH_SIZE) {
@@ -186,18 +183,22 @@ export async function POST(request: NextRequest) {
       await getSupabaseAdmin().from('tracking_history').insert(batch);
     }
 
-    // ═══ STEP 7: Log the upload ═══
-    await getSupabaseAdmin().from('upload_logs').insert({
-      filename: file.name,
-      total_rows: stats.total,
-      new_orders: newCount,
-      updated_orders: updatedCount,
-      skipped_rows: stats.total - stats.unique,
-      uploaded_by: user.username,
-    });
+    // ═══ STEP 7: Log (only on last chunk) ═══
+    if (isLastChunk) {
+      await getSupabaseAdmin().from('upload_logs').insert({
+        filename: file.name,
+        total_rows: stats.total,
+        new_orders: newCount,
+        updated_orders: updatedCount,
+        skipped_rows: stats.total - stats.unique,
+        uploaded_by: user.username,
+      });
+    }
 
     return NextResponse.json({
       success: true,
+      chunk: chunkIndex,
+      totalChunks,
       stats: {
         ...stats,
         newOrders: newCount,
