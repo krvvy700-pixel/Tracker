@@ -1,10 +1,18 @@
 -- ============================================
--- BUSINESSES TABLE — Run in Supabase SQL Editor
+-- RUN THIS IN SUPABASE SQL EDITOR
+-- Wipes all existing data + sets up businesses
 -- ============================================
 
-CREATE TABLE businesses (
+-- 1. Wipe all data (order matters for foreign keys)
+DELETE FROM tracking_history;
+DELETE FROM order_items;
+DELETE FROM upload_logs;
+DELETE FROM orders;
+
+-- 2. Create businesses table (if not already created)
+CREATE TABLE IF NOT EXISTS businesses (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  name TEXT NOT NULL,
+  name TEXT UNIQUE NOT NULL,
   logo_url TEXT,
   support_email TEXT,
   support_phone TEXT,
@@ -13,16 +21,25 @@ CREATE TABLE businesses (
   updated_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Add business_id to orders
-ALTER TABLE orders ADD COLUMN business_id UUID REFERENCES businesses(id);
-CREATE INDEX idx_orders_business_id ON orders(business_id);
+-- 3. Clear any existing businesses
+DELETE FROM businesses;
 
--- RLS
+-- 4. Add business_id column to orders (if not exists)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'orders' AND column_name = 'business_id'
+  ) THEN
+    ALTER TABLE orders ADD COLUMN business_id UUID REFERENCES businesses(id);
+    CREATE INDEX idx_orders_business_id ON orders(business_id);
+  END IF;
+END $$;
+
+-- 5. RLS for businesses
 ALTER TABLE businesses ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow service role full access on businesses" ON businesses;
 CREATE POLICY "Allow service role full access on businesses" ON businesses
   FOR ALL USING (true) WITH CHECK (true);
 
--- Auto-update trigger
-CREATE TRIGGER businesses_updated_at
-  BEFORE UPDATE ON businesses
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+-- Done! Now re-upload your CSV and businesses will be auto-created from brands.

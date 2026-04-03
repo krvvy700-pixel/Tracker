@@ -154,13 +154,12 @@ export default function AdminDashboard() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      if (uploadBusinessId) formData.append('businessId', uploadBusinessId);
       const res = await fetch('/api/upload', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: formData });
       const data = await res.json();
       if (res.ok) {
         setUploadResult(data.stats);
-        showAlert('success', `Upload complete! ${data.stats.newOrders} new, ${data.stats.updatedOrders} updated`);
-        fetchOrders(); fetchBrands();
+        showAlert('success', `Upload complete! ${data.stats.newOrders} new, ${data.stats.updatedOrders} updated, ${data.stats.brandsDetected || 0} brands detected`);
+        fetchOrders(); fetchBrands(); fetchBusinesses();
       } else { showAlert('error', data.error || 'Upload failed'); }
     } catch { showAlert('error', 'Upload failed'); }
     finally { setUploading(false); }
@@ -455,9 +454,8 @@ export default function AdminDashboard() {
                             {hasPermission('update_status') && (<th style={{ width: 48 }}><input type="checkbox" className="tf-checkbox" onChange={toggleSelectAll} checked={selectedOrders.size === orders.length && orders.length > 0} /></th>)}
                             <th>Order</th>
                             <th className="col-hide-md">Customer</th>
-                            <th className="col-hide-lg">Location</th>
-                            <th className="col-hide-sm">Payment</th>
-                            <th className="col-hide-lg">Total</th>
+                            <th className="col-hide-lg">City</th>
+                            <th className="col-hide-sm">Total</th>
                             <th>Status</th>
                             <th style={{ textAlign: 'right' }}>Actions</th>
                           </tr>
@@ -481,12 +479,7 @@ export default function AdminDashboard() {
                                   <p style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>{order.state}</p>
                                 </div>
                               </td>
-                              <td className="col-hide-sm">
-                                <span className={`payment-badge ${order.payment_method === 'COD' ? 'payment-cod' : 'payment-prepaid'}`}>
-                                  {order.payment_method}
-                                </span>
-                              </td>
-                              <td className="col-hide-lg" style={{ fontWeight: 500 }}>₹{Number(order.order_total).toLocaleString()}</td>
+                              <td className="col-hide-sm" style={{ fontWeight: 500 }}>₹{Number(order.order_total).toLocaleString()}</td>
                               <td>
                                 <span className={`status-pill ${getStatusColorClass(order.is_cancelled ? 'Cancelled' : order.tracking_status)}`}>
                                   {order.is_cancelled ? 'Cancelled' : order.tracking_status}
@@ -531,16 +524,7 @@ export default function AdminDashboard() {
                 <p className="page-subtitle">Import orders from Shopify CSV export</p>
               </div>
 
-              {/* Business selector */}
-              {businesses.length > 0 && (
-                <div className="form-group">
-                  <label className="form-label">Assign to Business (optional)</label>
-                  <select className="form-select" value={uploadBusinessId} onChange={(e) => setUploadBusinessId(e.target.value)} style={{ width: '100%' }}>
-                    <option value="">No business selected</option>
-                    {businesses.map((b) => (<option key={b.id} value={b.id}>{b.name}{b.is_default ? ' (default)' : ''}</option>))}
-                  </select>
-                </div>
-              )}
+              {/* Brands auto-detected from CSV */}
 
               {/* Drop zone */}
               <div
@@ -586,7 +570,7 @@ export default function AdminDashboard() {
                 <div>
                   <p className="info-box-title">How it works</p>
                   <p className="info-box-text">
-                    Export your orders from Shopify as CSV, then upload here. The system cleans data, normalizes phone numbers, and deduplicates. Re-uploading updates existing orders without creating duplicates. Handles 3,000+ orders in seconds.
+                    Export your orders from Shopify as CSV, then upload here. Brands are <strong>auto-detected</strong> from the Vendor column and businesses are created automatically. Re-uploading updates existing orders without creating duplicates. Handles 3,000+ orders in seconds.
                   </p>
                 </div>
               </div>
@@ -794,13 +778,10 @@ export default function AdminDashboard() {
             </div>
 
             <div className="space-y-4">
-              {/* Status + payment */}
+              {/* Status */}
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <span className={`status-pill ${getStatusColorClass(detailOrder.is_cancelled ? 'Cancelled' : detailOrder.tracking_status)}`}>
                   {detailOrder.is_cancelled ? 'Cancelled' : detailOrder.tracking_status}
-                </span>
-                <span className={`payment-badge ${detailOrder.payment_method === 'COD' ? 'payment-cod' : 'payment-prepaid'}`}>
-                  {detailOrder.payment_method}
                 </span>
               </div>
 

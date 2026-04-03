@@ -19,7 +19,6 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
-    const businessId = formData.get('businessId') as string | null;
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
@@ -36,6 +35,42 @@ export async function POST(request: NextRequest) {
     }
 
     const { orders, stats } = cleanCSVData(parsed.data as Record<string, string>[]);
+
+    // ═══ AUTO-DETECT BRANDS → CREATE BUSINESSES ═══
+    const allBrands = new Set<string>();
+    orders.forEach((o) => o.items.forEach((item) => { if (item.brand) allBrands.add(item.brand); }));
+    const brandArr = Array.from(allBrands).filter((b) => b.length > 0);
+
+    // brand name (lowercase) → business UUID
+    const bizMap = new Map<string, string>();
+
+    if (brandArr.length > 0) {
+      // Fetch ALL existing businesses
+      const { data: existingBiz } = await getSupabaseAdmin()
+        .from('businesses')
+        .select('id, name');
+
+      if (existingBiz) existingBiz.forEach((b) => bizMap.set(b.name.toLowerCase(), b.id));
+
+      // Auto-create businesses for new brands
+      for (const brand of brandArr) {
+        if (!bizMap.has(brand.toLowerCase())) {
+          const { data } = await getSupabaseAdmin()
+            .from('businesses')
+            .insert({ name: brand })
+            .select('id')
+            .single();
+          if (data) bizMap.set(brand.toLowerCase(), data.id);
+        }
+      }
+    }
+
+    // Helper: get business_id for an order based on its primary brand
+    const getBusinessId = (order: CleanedOrder): string | null => {
+      const brand = order.items[0]?.brand;
+      if (brand && bizMap.has(brand.toLowerCase())) return bizMap.get(brand.toLowerCase())!;
+      return null;
+    };
 
     // ═══ STEP 1: Batch-check which orders already exist ═══
     const allOrderIds = orders.map((o) => o.order_id);
@@ -57,25 +92,28 @@ export async function POST(request: NextRequest) {
     let newCount = 0;
     for (let i = 0; i < newOrders.length; i += BATCH_SIZE) {
       const batch = newOrders.slice(i, i + BATCH_SIZE);
-      const rows = batch.map((order) => ({
-        order_id: order.order_id,
-        shopify_id: order.shopify_id,
-        payment_method: order.payment_method,
-        financial_status: order.financial_status,
-        customer_name: order.customer_name,
-        customer_email: order.customer_email,
-        customer_mobile: order.customer_mobile,
-        address_line1: order.address_line1,
-        address_line2: order.address_line2,
-        address_line3: order.address_line3,
-        city: order.city,
-        state: order.state,
-        pincode: order.pincode,
-        order_total: order.order_total,
-        is_cancelled: order.is_cancelled,
-        tracking_status: order.is_cancelled ? 'Cancelled' : 'Order Placed',
-        ...(businessId ? { business_id: businessId } : {}),
-      }));
+      const rows = batch.map((order) => {
+        const businessId = getBusinessId(order);
+        return {
+          order_id: order.order_id,
+          shopify_id: order.shopify_id,
+          payment_method: order.payment_method,
+          financial_status: order.financial_status,
+          customer_name: order.customer_name,
+          customer_email: order.customer_email,
+          customer_mobile: order.customer_mobile,
+          address_line1: order.address_line1,
+          address_line2: order.address_line2,
+          address_line3: order.address_line3,
+          city: order.city,
+          state: order.state,
+          pincode: order.pincode,
+          order_total: order.order_total,
+          is_cancelled: order.is_cancelled,
+          tracking_status: order.is_cancelled ? 'Cancelled' : 'Order Placed',
+          ...(businessId ? { business_id: businessId } : {}),
+        };
+      });
 
       const { error } = await getSupabaseAdmin().from('orders').insert(rows);
       if (!error) newCount += batch.length;
@@ -86,8 +124,9 @@ export async function POST(request: NextRequest) {
     for (let i = 0; i < existingOrders.length; i += PARALLEL_LIMIT) {
       const batch = existingOrders.slice(i, i + PARALLEL_LIMIT);
       const results = await Promise.all(
-        batch.map((order) =>
-          getSupabaseAdmin()
+        batch.map((order) => {
+          const businessId = getBusinessId(order);
+          return getSupabaseAdmin()
             .from('orders')
             .update({
               payment_method: order.payment_method,
@@ -105,8 +144,8 @@ export async function POST(request: NextRequest) {
               is_cancelled: order.is_cancelled,
               ...(businessId ? { business_id: businessId } : {}),
             })
-            .eq('order_id', order.order_id)
-        )
+            .eq('order_id', order.order_id);
+        })
       );
       updatedCount += results.filter((r) => !r.error).length;
     }
@@ -163,6 +202,7 @@ export async function POST(request: NextRequest) {
         ...stats,
         newOrders: newCount,
         updatedOrders: updatedCount,
+        brandsDetected: brandArr.length,
       },
     });
   } catch (err) {
