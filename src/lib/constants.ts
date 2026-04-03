@@ -44,10 +44,26 @@ export const USER_ROLES = ['admin', 'manager', 'viewer'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
 export const ROLE_PERMISSIONS: Record<UserRole, string[]> = {
-  admin: ['upload_csv', 'update_status', 'manage_team', 'view_orders', 'cancel_order', 'delete_order'],
+  admin: ['upload_csv', 'update_status', 'manage_team', 'view_orders', 'cancel_order', 'delete_order', 'manage_businesses'],
   manager: ['upload_csv', 'update_status', 'view_orders', 'cancel_order'],
   viewer: ['view_orders'],
 };
+
+// Status color CSS class helper (matches globals.css status classes)
+export function getStatusColorClass(status: string): string {
+  const map: Record<string, string> = {
+    'Order Placed': 'status-pill-placed',
+    'Processing': 'status-pill-processing',
+    'Packed': 'status-pill-packed',
+    'Shipped': 'status-pill-shipped',
+    'In Transit': 'status-pill-transit',
+    'Out for Delivery': 'status-pill-out',
+    'Delivered': 'status-pill-delivered',
+    'Cancelled': 'status-pill-cancelled',
+    'RTO': 'status-pill-rto',
+  };
+  return map[status] || 'status-pill-default';
+}
 
 // CSV column mapping from Shopify export
 export const CSV_COLUMN_MAP = {

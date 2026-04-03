@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 
 export default function Home() {
   const router = useRouter();
@@ -16,8 +17,8 @@ export default function Home() {
   }, [router]);
 
   return (
-    <div className="loading-overlay" style={{ minHeight: '100vh' }}>
-      <div className="spinner spinner-lg"></div>
+    <div className="loading-center" style={{ minHeight: '100vh' }}>
+      <Loader2 size={32} className="spinner-lg" style={{ border: 'none', animation: 'spin 0.6s linear infinite', color: 'var(--primary)' }} />
       <p>Loading...</p>
     </div>
   );

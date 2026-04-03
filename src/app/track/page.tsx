@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, FormEvent } from 'react';
-import { TRACKING_STAGES, STAGE_ICONS } from '@/lib/constants';
+import { TRACKING_STAGES } from '@/lib/constants';
+import { Package, Search, Loader2, AlertCircle, Truck, Calendar, Check, X as XIcon } from 'lucide-react';
 
 interface OrderItem {
   brand: string;
@@ -28,6 +29,13 @@ interface TrackingOrder {
   order_items: OrderItem[];
 }
 
+interface Business {
+  name: string;
+  logo_url: string;
+  support_email: string;
+  support_phone: string;
+}
+
 interface TrackingHistory {
   status: string;
   created_at: string;
@@ -38,6 +46,7 @@ export default function TrackingPage() {
   const [orderId, setOrderId] = useState('');
   const [phone, setPhone] = useState('');
   const [order, setOrder] = useState<TrackingOrder | null>(null);
+  const [business, setBusiness] = useState<Business | null>(null);
   const [history, setHistory] = useState<TrackingHistory[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,10 +55,10 @@ export default function TrackingPage() {
     e.preventDefault();
     setError('');
     setOrder(null);
+    setBusiness(null);
     setLoading(true);
 
     try {
-      // Normalize order ID - add # if not present
       let searchId = orderId.trim();
       if (!searchId.startsWith('#')) searchId = '#' + searchId;
 
@@ -61,6 +70,7 @@ export default function TrackingPage() {
         setError(data.error || 'Order not found');
       } else {
         setOrder(data.order);
+        setBusiness(data.business || null);
         setHistory(data.history || []);
       }
     } catch {
@@ -73,16 +83,14 @@ export default function TrackingPage() {
   const getStageState = (stage: string) => {
     if (!order) return 'pending';
     if (order.is_cancelled) {
-      if (stage === order.tracking_status || stage === 'Cancelled') return 'cancelled';
       const currentIdx = TRACKING_STAGES.indexOf(order.tracking_status as typeof TRACKING_STAGES[number]);
       const stageIdx = TRACKING_STAGES.indexOf(stage as typeof TRACKING_STAGES[number]);
       if (stageIdx < currentIdx) return 'completed';
+      if (stage === order.tracking_status) return 'cancelled';
       return 'pending';
     }
-
     const currentIdx = TRACKING_STAGES.indexOf(order.tracking_status as typeof TRACKING_STAGES[number]);
     const stageIdx = TRACKING_STAGES.indexOf(stage as typeof TRACKING_STAGES[number]);
-
     if (stageIdx < currentIdx) return 'completed';
     if (stageIdx === currentIdx) return 'active';
     return 'pending';
@@ -92,27 +100,37 @@ export default function TrackingPage() {
     const entry = history.find((h) => h.status === stage);
     if (!entry) return null;
     return new Date(entry.created_at).toLocaleString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
     });
   };
 
+  const brandName = business?.name || 'TrackFlow';
+  const supportEmail = business?.support_email || 'support@trackflow.com';
+
   return (
     <div className="tracking-page">
-      <div className="tracking-container">
-        {/* Header */}
-        <div className="tracking-header">
-          <h1>📦 Track Your Order</h1>
-          <p>Enter your order details to check delivery status</p>
+      {/* Header */}
+      <div className="tracking-header">
+        <div className="tracking-header-inner">
+          <div className="tracking-logo">
+            {business?.logo_url ? (
+              <img src={business.logo_url} alt={brandName} />
+            ) : (
+              <Package size={16} />
+            )}
+          </div>
+          <span className="tracking-brand-name">{brandName}</span>
         </div>
+      </div>
 
-        {/* Search Card */}
-        <div className="tracking-search-card">
-          <form onSubmit={handleSearch}>
-            <div className="tracking-search-form">
+      <div className="tracking-body">
+        {/* Search card */}
+        <div className="tf-card animate-fade-in-up" style={{ padding: '1.5rem', marginBottom: '2rem' }}>
+          <h2 className="page-title" style={{ marginBottom: '0.25rem' }}>Track Your Order</h2>
+          <p className="page-subtitle" style={{ marginBottom: '1.25rem' }}>Enter your Order ID and the last 4 digits of your phone number</p>
+
+          <form onSubmit={handleSearch} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               <input
                 type="text"
                 className="form-input"
@@ -121,138 +139,187 @@ export default function TrackingPage() {
                 onChange={(e) => setOrderId(e.target.value)}
                 required
               />
-              <input
-                type="text"
-                className="form-input"
-                placeholder="Last 4 digits of phone"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                maxLength={4}
-                required
-              />
-              <button type="submit" className="btn btn-primary" disabled={loading}>
-                {loading ? <div className="spinner"></div> : 'Track'}
-              </button>
+              <div style={{ display: 'flex', gap: '0.75rem' }}>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Last 4 digits of phone"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  maxLength={4}
+                  required
+                  style={{ flex: 1 }}
+                />
+                <button type="submit" className="btn btn-primary" disabled={loading} style={{ gap: '0.5rem' }}>
+                  {loading ? <Loader2 size={16} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Search size={16} />}
+                  Track
+                </button>
+              </div>
             </div>
           </form>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="alert alert-error" style={{ animation: 'fadeInUp 0.3s ease' }}>
-            <span>⚠️</span> {error}
+          <div className="alert-band alert-error-band animate-fade-in-up" style={{ marginBottom: '1.5rem' }}>
+            <AlertCircle size={16} />
+            <span>{error}</span>
           </div>
         )}
 
         {/* Result */}
         {order && (
-          <div className="tracking-result">
-            {/* Order Summary Card */}
-            <div className="tracking-order-card">
-              <div className="tracking-order-header">
+          <div className="space-y-4 animate-fade-in-up">
+            {/* Summary card */}
+            <div className="tf-card" style={{ padding: '1.5rem' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1.25rem' }}>
                 <div>
-                  <div className="tracking-order-id">{order.order_id}</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 4 }}>
-                    Placed on {new Date(order.created_at).toLocaleDateString('en-IN', {
-                      day: 'numeric',
-                      month: 'long',
-                      year: 'numeric',
-                    })}
-                  </div>
+                  <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Order {order.order_id}</h2>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', marginTop: '0.125rem' }}>
+                    Placed on {new Date(order.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
                 </div>
-                <span className={`status-badge status-${(order.is_cancelled ? 'cancelled' : order.tracking_status).toLowerCase().replace(/\s+/g, '-')}`}>
-                  {STAGE_ICONS[order.is_cancelled ? 'Cancelled' : order.tracking_status]}{' '}
+                <span className={`status-pill ${getStatusPillClass(order)}`}>
                   {order.is_cancelled ? 'Cancelled' : order.tracking_status}
                 </span>
               </div>
 
-              <div className="tracking-order-body">
-                {/* Order Details */}
-                <div className="order-details-grid">
-                  <div className="order-detail-item">
-                    <div className="order-detail-label">Customer</div>
-                    <div className="order-detail-value">{order.customer_name}</div>
-                  </div>
-                  <div className="order-detail-item">
-                    <div className="order-detail-label">Payment</div>
-                    <div className="order-detail-value">
-                      <span className={`payment-badge ${order.payment_method === 'COD' ? 'payment-cod' : 'payment-prepaid'}`}>
-                        {order.payment_method === 'COD' ? '💵 COD' : '💳 Prepaid'}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="order-detail-item">
-                    <div className="order-detail-label">Delivering To</div>
-                    <div className="order-detail-value" style={{ fontSize: 13 }}>
-                      {order.city}, {order.state} — {order.pincode}
-                    </div>
-                  </div>
-                  <div className="order-detail-item">
-                    <div className="order-detail-label">Order Total</div>
-                    <div className="order-detail-value" style={{ color: 'var(--accent-primary-hover)' }}>
-                      ₹{Number(order.order_total).toFixed(0)}
-                    </div>
-                  </div>
+              <div className="order-summary-grid">
+                <div>
+                  <p className="order-summary-label">Customer</p>
+                  <p className="order-summary-value">{order.customer_name}</p>
                 </div>
-
-                {/* Courier Info */}
-                {order.tracking_id && (
-                  <div className="alert alert-info" style={{ marginBottom: 24 }}>
-                    <span>🚚</span>
-                    <div>
-                      <strong>Tracking ID:</strong> {order.tracking_id}
-                      {order.courier_partner && <> • <strong>Courier:</strong> {order.courier_partner}</>}
-                    </div>
-                  </div>
-                )}
-
-                {/* Timeline */}
-                <div style={{ marginBottom: 24 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 16, color: 'var(--text-secondary)' }}>
-                    Delivery Timeline
-                  </h3>
-                  <div className="timeline">
-                    {TRACKING_STAGES.map((stage) => {
-                      const state = getStageState(stage);
-                      const timestamp = getTimestamp(stage);
-                      return (
-                        <div key={stage} className={`timeline-item ${state}`}>
-                          <div className="timeline-line"></div>
-                          <div className="timeline-dot">
-                            {state === 'completed' ? '✓' : STAGE_ICONS[stage]}
-                          </div>
-                          <div className="timeline-content">
-                            <div className="timeline-title">{stage}</div>
-                            {timestamp && <div className="timeline-time">{timestamp}</div>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                <div>
+                  <p className="order-summary-label">Payment</p>
+                  <p className="order-summary-value">{order.payment_method}</p>
                 </div>
-
-                {/* Items */}
-                <div className="items-list">
-                  <div className="items-list-title">Order Items</div>
-                  {order.order_items?.map((item, idx) => (
-                    <div key={idx} className="item-row">
-                      <div className="item-name">{item.product_name}</div>
-                      <span className="item-brand">{item.brand}</span>
-                      <span className="item-qty">×{item.quantity}</span>
-                      <span className="item-price">₹{Number(item.price).toFixed(0)}</span>
-                    </div>
-                  ))}
+                <div>
+                  <p className="order-summary-label">Address</p>
+                  <p className="order-summary-value">{order.city}, {order.state}</p>
+                </div>
+                <div>
+                  <p className="order-summary-label">Total</p>
+                  <p className="order-summary-value">₹{Number(order.order_total).toLocaleString()}</p>
                 </div>
               </div>
             </div>
+
+            {/* Courier info */}
+            {order.tracking_id && (
+              <div className="alert-band alert-info-band">
+                <Truck size={16} />
+                <div style={{ fontSize: '0.875rem' }}>
+                  <strong>{order.courier_partner}</strong>
+                  <span style={{ color: 'var(--fg-muted)' }}> • {order.tracking_id}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Estimated delivery */}
+            {order.estimated_delivery && (
+              <div className="alert-band alert-success-band">
+                <Calendar size={16} />
+                <div style={{ fontSize: '0.875rem' }}>
+                  <span style={{ color: 'var(--fg-muted)' }}>Estimated delivery: </span>
+                  <strong>{new Date(order.estimated_delivery).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</strong>
+                </div>
+              </div>
+            )}
+
+            {/* Timeline */}
+            <div className="tf-card" style={{ padding: '1.5rem' }}>
+              <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '1.25rem' }}>Delivery Timeline</h3>
+              <div className="timeline">
+                {TRACKING_STAGES.map((stage, idx) => {
+                  const state = getStageState(stage);
+                  const timestamp = getTimestamp(stage);
+                  const isLast = idx === TRACKING_STAGES.length - 1;
+                  return (
+                    <div key={stage} className="timeline-step">
+                      <div className="timeline-track">
+                        <div className={`timeline-dot timeline-dot-${state}`}>
+                          {state === 'completed' && <Check size={8} />}
+                        </div>
+                        {!isLast && (
+                          <div className={`timeline-line ${state === 'completed' ? 'timeline-line-completed' : 'timeline-line-pending'}`} />
+                        )}
+                      </div>
+                      <div className="timeline-label">
+                        <p className={`timeline-label-text ${state}`}>{stage}</p>
+                        {timestamp && <p className="timeline-label-time">{timestamp}</p>}
+                        {state === 'completed' && !timestamp && <p className="timeline-label-time">Completed</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+                {order.is_cancelled && (
+                  <div className="timeline-step" style={{ marginTop: '0.5rem' }}>
+                    <div className="timeline-track">
+                      <div className="timeline-dot timeline-dot-cancelled">
+                        <XIcon size={8} />
+                      </div>
+                    </div>
+                    <div className="timeline-label">
+                      <p className="timeline-label-text cancelled">Cancelled</p>
+                      {order.status_updated_at && (
+                        <p className="timeline-label-time">{new Date(order.status_updated_at).toLocaleString()}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Items */}
+            {order.order_items && order.order_items.length > 0 && (
+              <div className="tf-card" style={{ padding: '1.5rem' }}>
+                <h3 style={{ fontSize: '0.875rem', fontWeight: 600, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Package size={16} /> Order Items
+                </h3>
+                <div className="items-list">
+                  {order.order_items.map((item, i) => (
+                    <div key={i} className="item-row">
+                      <div className="item-info">
+                        <div className="item-name">{item.product_name}</div>
+                        <span className="item-brand-tag">{item.brand}</span>
+                      </div>
+                      <div className="item-pricing">
+                        <div className="item-price">₹{Number(item.price).toLocaleString()}</div>
+                        <div className="item-qty">×{item.quantity}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="items-total" style={{ marginTop: '0.75rem' }}>
+                  <span className="items-total-label">Total</span>
+                  <span className="items-total-value">₹{Number(order.order_total).toLocaleString()}</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
+      </div>
 
-        {/* Footer */}
-        <div style={{ textAlign: 'center', marginTop: 40, color: 'var(--text-muted)', fontSize: 13 }}>
-          <p>Need help? Contact us at support@yourdomain.com</p>
-        </div>
+      {/* Footer */}
+      <div className="tracking-footer">
+        Need help? Contact us at {supportEmail}
       </div>
     </div>
   );
+}
+
+function getStatusPillClass(order: { is_cancelled: boolean; tracking_status: string }) {
+  const status = order.is_cancelled ? 'Cancelled' : order.tracking_status;
+  const map: Record<string, string> = {
+    'Order Placed': 'status-pill-placed',
+    'Processing': 'status-pill-processing',
+    'Packed': 'status-pill-packed',
+    'Shipped': 'status-pill-shipped',
+    'In Transit': 'status-pill-transit',
+    'Out for Delivery': 'status-pill-out',
+    'Delivered': 'status-pill-delivered',
+    'Cancelled': 'status-pill-cancelled',
+    'RTO': 'status-pill-rto',
+  };
+  return map[status] || 'status-pill-default';
 }

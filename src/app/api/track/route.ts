@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
-// GET - public tracking by token
+// GET - public tracking by token or orderId+phone
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const token = searchParams.get('token');
@@ -12,12 +12,23 @@ export async function GET(request: NextRequest) {
     // Token-based tracking (direct link)
     const { data: order, error } = await getSupabaseAdmin()
       .from('orders')
-      .select('order_id, customer_name, tracking_status, tracking_id, courier_partner, status_updated_at, estimated_delivery, order_total, payment_method, is_cancelled, city, state, pincode, created_at, order_items(*)')
+      .select('order_id, customer_name, tracking_status, tracking_id, courier_partner, status_updated_at, estimated_delivery, order_total, payment_method, is_cancelled, city, state, pincode, created_at, business_id, order_items(*)')
       .eq('tracking_token', token)
       .single();
 
     if (error || !order) {
       return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    // Get business info if linked
+    let business = null;
+    if (order.business_id) {
+      const { data: biz } = await getSupabaseAdmin()
+        .from('businesses')
+        .select('name, logo_url, support_email, support_phone')
+        .eq('id', order.business_id)
+        .single();
+      business = biz;
     }
 
     // Get tracking history
@@ -27,7 +38,7 @@ export async function GET(request: NextRequest) {
       .eq('order_id', order.order_id)
       .order('created_at', { ascending: true });
 
-    return NextResponse.json({ order, history: history || [] });
+    return NextResponse.json({ order, business, history: history || [] });
   }
 
   if (orderId && phone) {
@@ -36,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     const { data: order, error } = await getSupabaseAdmin()
       .from('orders')
-      .select('order_id, customer_name, tracking_status, tracking_id, courier_partner, status_updated_at, estimated_delivery, order_total, payment_method, is_cancelled, city, state, pincode, created_at, customer_mobile, order_items(*)')
+      .select('order_id, customer_name, tracking_status, tracking_id, courier_partner, status_updated_at, estimated_delivery, order_total, payment_method, is_cancelled, city, state, pincode, created_at, customer_mobile, business_id, order_items(*)')
       .eq('order_id', orderId)
       .single();
 
@@ -53,6 +64,17 @@ export async function GET(request: NextRequest) {
     // Remove sensitive data
     const { customer_mobile, ...safeOrder } = order;
 
+    // Get business info if linked
+    let business = null;
+    if (order.business_id) {
+      const { data: biz } = await getSupabaseAdmin()
+        .from('businesses')
+        .select('name, logo_url, support_email, support_phone')
+        .eq('id', order.business_id)
+        .single();
+      business = biz;
+    }
+
     // Get tracking history
     const { data: history } = await getSupabaseAdmin()
       .from('tracking_history')
@@ -60,7 +82,7 @@ export async function GET(request: NextRequest) {
       .eq('order_id', order.order_id)
       .order('created_at', { ascending: true });
 
-    return NextResponse.json({ order: safeOrder, history: history || [] });
+    return NextResponse.json({ order: safeOrder, business, history: history || [] });
   }
 
   return NextResponse.json({ error: 'Provide token or orderId+phone' }, { status: 400 });

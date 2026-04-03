@@ -2,11 +2,13 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { Package, Loader2, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -40,59 +42,84 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="login-container">
-      <div className="login-bg-effect login-bg-effect-1"></div>
-      <div className="login-bg-effect login-bg-effect-2"></div>
+    <div className="login-page">
+      {/* Floating shapes */}
+      <div className="login-float login-float-1" />
+      <div className="login-float login-float-2" />
+      <div className="login-float login-float-3" />
 
       <div className="login-card">
-        <div className="login-logo">
-          <h1>📦 TrackFlow</h1>
-          <p>Customer Tracking CRM</p>
+        <div className="tf-card" style={{ padding: '2rem' }}>
+          {/* Brand */}
+          <div className="login-brand">
+            <div className="login-brand-icon">
+              <Package />
+            </div>
+            <h1>TrackFlow</h1>
+            <p>Sign in to your account</p>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div className="alert-band alert-error-band" style={{ marginBottom: '1rem' }}>
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="form-group">
+              <label className="form-label">Username</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Enter your username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  style={{ paddingRight: '2.5rem' }}
+                />
+                <button
+                  type="button"
+                  className="input-password-toggle"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={loading}
+              style={{ width: '100%', height: '2.75rem', marginTop: '0.5rem' }}
+            >
+              {loading ? (
+                <>
+                  <Loader2 size={16} className="spinner-sm" style={{ border: 'none', animation: 'spin 0.6s linear infinite' }} />
+                  Signing in...
+                </>
+              ) : (
+                'Sign in'
+              )}
+            </button>
+          </form>
         </div>
-
-        {error && (
-          <div className="alert alert-error">
-            <span>⚠️</span> {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label">Username</label>
-            <input
-              type="text"
-              className="form-input"
-              placeholder="Enter your username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              autoFocus
-            />
-          </div>
-
-          <div className="form-group">
-            <label className="form-label">Password</label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-            {loading ? (
-              <>
-                <div className="spinner"></div>
-                Signing in...
-              </>
-            ) : (
-              'Sign In'
-            )}
-          </button>
-        </form>
       </div>
     </div>
   );
