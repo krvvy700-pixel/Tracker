@@ -7,7 +7,7 @@ import {
   Package, Upload, Users, LogOut, Search, Eye, Link2, MessageCircle, Mail,
   ChevronLeft, ChevronRight, X, Check, Truck, AlertCircle, ShoppingBag,
   Loader2, FileUp, Info, UserPlus, Trash2, Building2, Plus, Lock, Unlock,
-  Activity, Zap
+  Activity, Zap, Calendar, StickyNote
 } from 'lucide-react';
 
 /* ═══════════ TYPES ═══════════ */
@@ -57,6 +57,8 @@ export default function AdminDashboard() {
   const [bulkStatus, setBulkStatus] = useState('');
   const [bulkTrackingId, setBulkTrackingId] = useState('');
   const [bulkCourier, setBulkCourier] = useState('');
+  const [bulkNotes, setBulkNotes] = useState('');
+  const [bulkEstDelivery, setBulkEstDelivery] = useState('');
 
   // Detail modal
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -214,14 +216,39 @@ export default function AdminDashboard() {
       const res = await fetch('/api/orders', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ orderIds: Array.from(selectedOrders), status: bulkStatus, trackingId: bulkTrackingId || undefined, courierPartner: bulkCourier || undefined }),
+        body: JSON.stringify({
+          orderIds: Array.from(selectedOrders),
+          status: bulkStatus,
+          trackingId: bulkTrackingId || undefined,
+          courierPartner: bulkCourier || undefined,
+          notes: bulkNotes || undefined,
+          estimatedDelivery: bulkEstDelivery || undefined,
+        }),
       });
       if (res.ok) {
         showAlert('success', `Updated ${selectedOrders.size} orders to "${bulkStatus}"`);
-        setSelectedOrders(new Set()); setShowStatusModal(false); setBulkStatus(''); setBulkTrackingId(''); setBulkCourier('');
+        setSelectedOrders(new Set()); setShowStatusModal(false);
+        setBulkStatus(''); setBulkTrackingId(''); setBulkCourier(''); setBulkNotes(''); setBulkEstDelivery('');
         fetchOrders();
       } else { showAlert('error', 'Update failed'); }
     } catch { showAlert('error', 'Update failed'); }
+  };
+
+  /* ═══ DELETE ORDER ═══ */
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!confirm(`Delete order ${orderId}? This cannot be undone.`)) return;
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ orderId }),
+      });
+      if (res.ok) {
+        showAlert('success', `Order ${orderId} deleted`);
+        if (showDetailModal) setShowDetailModal(false);
+        fetchOrders();
+      } else { showAlert('error', 'Delete failed'); }
+    } catch { showAlert('error', 'Delete failed'); }
   };
 
   const handleSingleStatusUpdate = async (orderId: string, status: string) => {
@@ -441,55 +468,37 @@ export default function AdminDashboard() {
                 <p className="page-subtitle">Manage and track all customer orders</p>
               </div>
 
-              {/* Stats */}
-              <div className="stats-grid">
-                <StatCard icon={ShoppingBag} label="Total Orders" value={totalOrders} color="var(--primary)" />
-                <StatCard icon={Check} label="Delivered" value={orders.filter((o) => o.tracking_status === 'Delivered').length} color="var(--success)" />
-                <StatCard icon={Truck} label="In Transit" value={orders.filter((o) => ['Shipped', 'In Transit', 'Out for Delivery'].includes(o.tracking_status)).length} color="var(--info)" />
-                <StatCard icon={AlertCircle} label="Cancelled" value={orders.filter((o) => o.is_cancelled).length} color="var(--danger)" />
-              </div>
-
-              {/* API Insights */}
-              <div className="tf-card" style={{ padding: '1.25rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <Activity size={18} style={{ color: 'var(--primary)' }} />
-                  <span style={{ fontSize: '0.875rem', fontWeight: 600 }}>System Insights</span>
-                  <span style={{ marginLeft: 'auto', fontSize: '0.6875rem', padding: '0.125rem 0.625rem', borderRadius: '9999px', background: 'var(--success-light)', color: 'var(--success)', fontWeight: 500 }}>Live</span>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '0.75rem' }}>
-                  <div style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.25rem' }}>
-                      <Zap size={12} style={{ color: 'var(--primary)' }} />
-                      <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', fontWeight: 500 }}>Queries/Track View</span>
-                    </div>
-                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>2</span>
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--success)', marginLeft: '0.25rem' }}>↓ from 3</span>
-                  </div>
-                  <div style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.25rem' }}>
-                      <Activity size={12} style={{ color: 'var(--info)' }} />
-                      <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', fontWeight: 500 }}>Est. Monthly Views</span>
-                    </div>
-                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>250K</span>
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', marginLeft: '0.25rem' }}>capacity</span>
-                  </div>
-                  <div style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.25rem' }}>
-                      <Package size={12} style={{ color: 'var(--warning)' }} />
-                      <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', fontWeight: 500 }}>DB Size (est.)</span>
-                    </div>
-                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>{(totalOrders * 1.25 / 1024).toFixed(1)} MB</span>
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', marginLeft: '0.25rem' }}>/ 500 MB</span>
-                  </div>
-                  <div style={{ padding: '0.75rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', marginBottom: '0.25rem' }}>
-                      <Check size={12} style={{ color: 'var(--success)' }} />
-                      <span style={{ fontSize: '0.6875rem', color: 'var(--fg-muted)', fontWeight: 500 }}>Upload Mode</span>
-                    </div>
-                    <span style={{ fontSize: '1.25rem', fontWeight: 700 }}>Chunked</span>
-                    <span style={{ fontSize: '0.6875rem', color: 'var(--success)', marginLeft: '0.25rem' }}>500/batch</span>
-                  </div>
-                </div>
+              {/* Stage KPIs */}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {TRACKING_STAGES_WITH_SPECIAL.map((stage) => {
+                  const count = stage === 'Cancelled'
+                    ? orders.filter((o) => o.is_cancelled).length
+                    : orders.filter((o) => o.tracking_status === stage && !o.is_cancelled).length;
+                  return (
+                    <button key={stage} onClick={() => { setStatusFilter(statusFilter === stage ? '' : stage); setPage(1); }}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem',
+                        borderRadius: '9999px', border: statusFilter === stage ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                        background: statusFilter === stage ? 'var(--primary-light)' : 'var(--card-bg)',
+                        fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
+                        color: statusFilter === stage ? 'var(--primary)' : 'var(--fg-muted)',
+                      }}>
+                      <span>{STAGE_ICONS[stage]}</span>
+                      <span>{stage}</span>
+                      <span style={{ fontWeight: 700, color: count > 0 ? 'var(--fg)' : 'var(--fg-muted)' }}>{count}</span>
+                    </button>
+                  );
+                })}
+                <button onClick={() => { setStatusFilter(''); setPage(1); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem',
+                    borderRadius: '9999px', border: !statusFilter ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                    background: !statusFilter ? 'var(--primary-light)' : 'var(--card-bg)',
+                    fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
+                    color: !statusFilter ? 'var(--primary)' : 'var(--fg-muted)',
+                  }}>
+                  <span>📊</span><span>All</span><span style={{ fontWeight: 700, color: 'var(--fg)' }}>{totalOrders}</span>
+                </button>
               </div>
 
               {/* Toolbar */}
@@ -576,6 +585,7 @@ export default function AdminDashboard() {
                                   <button className="btn-icon" onClick={() => copyTrackingLink(order.tracking_token)} title="Copy Link"><Link2 size={16} /></button>
                                   <button className="btn-icon" onClick={() => sendWhatsApp(order)} title="WhatsApp" style={{ color: '#25D366' }}><MessageCircle size={16} /></button>
                                   <button className="btn-icon" onClick={() => sendEmail(order)} title="Email" style={{ color: 'var(--info)' }}><Mail size={16} /></button>
+                                  {hasPermission('delete_order') && <button className="btn-icon" onClick={() => handleDeleteOrder(order.order_id)} title="Delete" style={{ color: 'var(--danger)' }}><Trash2 size={16} /></button>}
                                 </div>
                               </td>
                             </tr>
@@ -850,6 +860,14 @@ export default function AdminDashboard() {
               <div className="form-group">
                 <label className="form-label">Courier Partner (optional)</label>
                 <input type="text" className="form-input" placeholder="e.g., Delhivery" value={bulkCourier} onChange={(e) => setBulkCourier(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label"><Calendar size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />Estimated Delivery (optional)</label>
+                <input type="date" className="form-input" value={bulkEstDelivery} onChange={(e) => setBulkEstDelivery(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label className="form-label"><StickyNote size={12} style={{ display: 'inline', marginRight: '0.25rem' }} />Note (optional)</label>
+                <textarea className="form-input" rows={2} placeholder="e.g., Dispatched via express" value={bulkNotes} onChange={(e) => setBulkNotes(e.target.value)} style={{ height: 'auto', resize: 'vertical' }} />
               </div>
               <div className="modal-actions">
                 <button className="btn btn-outline" onClick={() => setShowStatusModal(false)}>Cancel</button>

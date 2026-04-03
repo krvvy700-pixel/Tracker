@@ -36,7 +36,6 @@ export async function GET(request: NextRequest) {
   }
 
   if (brand) {
-    // Filter by brand through order_items
     const { data: orderIds } = await getSupabaseAdmin()
       .from('order_items')
       .select('order_id')
@@ -66,7 +65,7 @@ export async function GET(request: NextRequest) {
   });
 }
 
-// PATCH - bulk update status
+// PATCH - bulk update status + estimated delivery + notes
 export async function PATCH(request: NextRequest) {
   const user = getAuthFromRequest(request);
   if (!user || user.role === 'viewer') {
@@ -74,7 +73,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    const { orderIds, status, trackingId, courierPartner, notes } = await request.json();
+    const { orderIds, status, trackingId, courierPartner, notes, estimatedDelivery } = await request.json();
 
     if (!orderIds || !Array.isArray(orderIds) || !status) {
       return NextResponse.json({ error: 'orderIds array and status required' }, { status: 400 });
@@ -92,6 +91,7 @@ export async function PATCH(request: NextRequest) {
 
     if (trackingId) updateData.tracking_id = trackingId;
     if (courierPartner) updateData.courier_partner = courierPartner;
+    if (estimatedDelivery) updateData.estimated_delivery = estimatedDelivery;
 
     const { error } = await getSupabaseAdmin()
       .from('orders')
@@ -102,7 +102,7 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Add tracking history for each order
+    // Add tracking history with notes
     const historyEntries = orderIds.map((orderId: string) => ({
       order_id: orderId,
       status,
@@ -115,5 +115,34 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ success: true, updated: orderIds.length });
   } catch {
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
+  }
+}
+
+// DELETE - delete individual order and all related data
+export async function DELETE(request: NextRequest) {
+  const user = getAuthFromRequest(request);
+  if (!user || user.role !== 'admin') {
+    return NextResponse.json({ error: 'Unauthorized — admin only' }, { status: 401 });
+  }
+
+  try {
+    const { orderId } = await request.json();
+
+    if (!orderId) {
+      return NextResponse.json({ error: 'orderId required' }, { status: 400 });
+    }
+
+    // Delete in order: items → history → order (FK constraints)
+    await getSupabaseAdmin().from('order_items').delete().eq('order_id', orderId);
+    await getSupabaseAdmin().from('tracking_history').delete().eq('order_id', orderId);
+    const { error } = await getSupabaseAdmin().from('orders').delete().eq('order_id', orderId);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, deleted: orderId });
+  } catch {
+    return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }
 }

@@ -1997,3 +1997,50 @@ a {
 .animate-fade-in {
   animation: fadeIn 0.2s ease forwards;
 }
+
+/* ═══ Tracking Page Utilities ═══ */
+
+.courier-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--primary-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.footer-pill {
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  white-space: nowrap;
+}
+
+/* Mobile-first tracking */
+@media (max-width: 480px) {
+  .tracking-body {
+    padding: 0.75rem 0.5rem;
+  }
+  .tracking-header-inner {
+    padding: 0.625rem 0.5rem;
+  }
+  .tracking-footer-inner {
+    padding: 0.625rem 0.5rem;
+    flex-direction: column;
+    text-align: center;
+  }
+  .remix-grid {
+    gap: 0.75rem;
+  }
+  .tf-card {
+    border-radius: var(--radius-lg) !important;
+  }
+  .courier-avatar {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
+
