@@ -2,8 +2,12 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "TrackFlow — Order Tracking CRM",
+  title: "ShipTrack — Order Tracking",
   description: "Premium order tracking and customer relationship management for Shopify businesses",
+  icons: {
+    icon: "/shiptrack-logo.png",
+    apple: "/shiptrack-logo.png",
+  },
 };
 
 export default function RootLayout({

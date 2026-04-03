@@ -57,10 +57,10 @@ export default function TrackingTokenPage({ params }: { params: { token: string 
 
   const brandName = business?.name || 'Order Tracking';
 
-  if (loading) return <div className="tracking-page"><Header brandName={brandName} /><div className="loading-center" style={{ minHeight: '60vh' }}><Loader2 size={32} style={{ animation: 'spin 0.6s linear infinite', color: 'var(--primary)' }} /></div></div>;
+  if (loading) return <div className="tracking-page"><Header brandName={brandName} business={business} /><div className="loading-center" style={{ minHeight: '60vh' }}><Loader2 size={32} style={{ animation: 'spin 0.6s linear infinite', color: 'var(--primary)' }} /></div></div>;
 
   if (error || !order) return (
-    <div className="tracking-page"><Header brandName={brandName} />
+    <div className="tracking-page"><Header brandName={brandName} business={business} />
       <div className="tracking-body"><div className="tf-card animate-fade-in-up" style={{ padding: '2.5rem', textAlign: 'center' }}>
         <AlertCircle size={40} style={{ color: 'var(--danger)', margin: '0 auto 0.75rem' }} />
         <h2 style={{ fontSize: '1.125rem', fontWeight: 600 }}>Order Not Found</h2>
@@ -83,7 +83,7 @@ export default function TrackingTokenPage({ params }: { params: { token: string 
 
   return (
     <div className="tracking-page">
-      <Header brandName={brandName} />
+      <Header brandName={brandName} business={business} />
       <main className="tracking-body animate-fade-in-up">
         <div className="remix-grid">
           {/* LEFT */}
@@ -207,12 +207,12 @@ export default function TrackingTokenPage({ params }: { params: { token: string 
         <footer className="tracking-footer-brand">
           <div className="tracking-footer-inner" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div className="courier-avatar"><Package size={16} style={{ color: 'var(--primary)' }} /></div>
+              <img src="/shiptrack-logo.png" alt="ShipTrack" style={{ width: '2rem', height: '2rem', objectFit: 'contain' }} />
               <p style={{ fontSize: '0.8125rem' }}><span style={{ color: 'var(--primary)', fontWeight: 600 }}>Shipping </span>that fuels Ecommerce<span style={{ color: 'var(--primary)', fontWeight: 600 }}> Success.</span></p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               {business.support_phone && <span className="footer-pill">📞 {business.support_phone}</span>}
-              <span className="footer-pill">📧 {business.support_email}</span>
+              {business.support_email && <span className="footer-pill">📧 {business.support_email}</span>}
             </div>
           </div>
         </footer>
@@ -221,21 +221,33 @@ export default function TrackingTokenPage({ params }: { params: { token: string 
   );
 }
 
-function Header({ brandName }: { brandName: string }) {
+function Header({ brandName, business }: { brandName: string; business: Business | null }) {
+  const logoUrl = business?.logo_url;
+  // Convert Google Drive share links to direct image URLs
+  const directLogo = logoUrl && logoUrl.includes('drive.google.com')
+    ? logoUrl.replace(/\/file\/d\/([^/]+).*/, '/uc?export=view&id=$1')
+    : logoUrl;
+
   return (
     <div className="tracking-header">
       <div className="tracking-header-inner" style={{ justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-          <div className="courier-avatar"><span style={{ fontWeight: 700, fontSize: '0.75rem', color: 'var(--primary)' }}>CN</span></div>
+          {directLogo ? (
+            <img src={directLogo} alt={brandName} style={{ width: '2.5rem', height: '2.5rem', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} />
+          ) : (
+            <div className="courier-avatar">
+              <span style={{ fontWeight: 700, fontSize: '0.75rem', color: 'var(--primary)' }}>
+                {brandName.substring(0, 2).toUpperCase()}
+              </span>
+            </div>
+          )}
           <span style={{ fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>{brandName}</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: 'var(--fg-muted)' }}>
           <span>Shipping</span>
           <span style={{ color: 'var(--primary)', fontWeight: 600 }}>Powered</span>
           <span>by</span>
-          <div style={{ width: '1.75rem', height: '1.75rem', borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '0.125rem' }}>
-            <Package size={12} style={{ color: 'var(--primary)' }} />
-          </div>
+          <img src="/shiptrack-logo.png" alt="ShipTrack" style={{ width: '1.75rem', height: '1.75rem', marginLeft: '0.125rem' }} />
         </div>
       </div>
     </div>

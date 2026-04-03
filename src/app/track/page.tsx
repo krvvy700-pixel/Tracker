@@ -62,14 +62,19 @@ export default function TrackingPage() {
       <div className="tracking-header">
         <div className="tracking-header-inner" style={{ justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem' }}>
-            <div className="courier-avatar"><span style={{ fontWeight: 700, fontSize: '0.75rem', color: 'var(--primary)' }}>CN</span></div>
+            {(() => {
+              const logoUrl = business?.logo_url;
+              const directLogo = logoUrl && logoUrl.includes('drive.google.com')
+                ? logoUrl.replace(/\/file\/d\/([^/]+).*/, '/uc?export=view&id=$1') : logoUrl;
+              return directLogo
+                ? <img src={directLogo} alt={brandName} style={{ width: '2.5rem', height: '2.5rem', borderRadius: '50%', objectFit: 'cover', border: '1px solid var(--border)' }} />
+                : <div className="courier-avatar"><span style={{ fontWeight: 700, fontSize: '0.75rem', color: 'var(--primary)' }}>{brandName.substring(0, 2).toUpperCase()}</span></div>;
+            })()}
             <span style={{ fontSize: '1rem', fontWeight: 700, letterSpacing: '-0.01em' }}>{brandName}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', color: 'var(--fg-muted)' }}>
             <span>Shipping</span><span style={{ color: 'var(--primary)', fontWeight: 600 }}>Powered</span><span>by</span>
-            <div style={{ width: '1.75rem', height: '1.75rem', borderRadius: '50%', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginLeft: '0.125rem' }}>
-              <Package size={12} style={{ color: 'var(--primary)' }} />
-            </div>
+            <img src="/shiptrack-logo.png" alt="ShipTrack" style={{ width: '1.75rem', height: '1.75rem', marginLeft: '0.125rem' }} />
           </div>
         </div>
       </div>
@@ -211,12 +216,12 @@ export default function TrackingPage() {
         <footer className="tracking-footer-brand">
           <div className="tracking-footer-inner" style={{ justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div className="courier-avatar"><Package size={16} style={{ color: 'var(--primary)' }} /></div>
+              <img src="/shiptrack-logo.png" alt="ShipTrack" style={{ width: '2rem', height: '2rem', objectFit: 'contain' }} />
               <p style={{ fontSize: '0.8125rem' }}><span style={{ color: 'var(--primary)', fontWeight: 600 }}>Shipping </span>that fuels Ecommerce<span style={{ color: 'var(--primary)', fontWeight: 600 }}> Success.</span></p>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
               {business.support_phone && <span className="footer-pill">📞 {business.support_phone}</span>}
-              <span className="footer-pill">📧 {business.support_email}</span>
+              {business.support_email && <span className="footer-pill">📧 {business.support_email}</span>}
             </div>
           </div>
         </footer>

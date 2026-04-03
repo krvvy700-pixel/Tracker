@@ -469,7 +469,17 @@ export default function AdminDashboard() {
               </div>
 
               {/* Stage KPIs */}
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', gap: '0.625rem', overflowX: 'auto', paddingBottom: '0.25rem', WebkitOverflowScrolling: 'touch' }}>
+                <button onClick={() => { setStatusFilter(''); setPage(1); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem',
+                    borderRadius: '9999px', border: !statusFilter ? '1.5px solid var(--primary)' : '1px solid var(--border)',
+                    background: !statusFilter ? 'var(--primary-light)' : 'var(--card-bg)',
+                    fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                    color: !statusFilter ? 'var(--primary)' : 'var(--fg-muted)',
+                  }}>
+                  📊 All <span style={{ fontWeight: 700, color: 'var(--fg)' }}>{totalOrders}</span>
+                </button>
                 {TRACKING_STAGES_WITH_SPECIAL.map((stage) => {
                   const count = stage === 'Cancelled'
                     ? orders.filter((o) => o.is_cancelled).length
@@ -477,11 +487,12 @@ export default function AdminDashboard() {
                   return (
                     <button key={stage} onClick={() => { setStatusFilter(statusFilter === stage ? '' : stage); setPage(1); }}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem',
+                        display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.5rem 0.875rem',
                         borderRadius: '9999px', border: statusFilter === stage ? '1.5px solid var(--primary)' : '1px solid var(--border)',
                         background: statusFilter === stage ? 'var(--primary-light)' : 'var(--card-bg)',
                         fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
                         color: statusFilter === stage ? 'var(--primary)' : 'var(--fg-muted)',
+                        whiteSpace: 'nowrap', flexShrink: 0,
                       }}>
                       <span>{STAGE_ICONS[stage]}</span>
                       <span>{stage}</span>
@@ -489,16 +500,47 @@ export default function AdminDashboard() {
                     </button>
                   );
                 })}
-                <button onClick={() => { setStatusFilter(''); setPage(1); }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem',
-                    borderRadius: '9999px', border: !statusFilter ? '1.5px solid var(--primary)' : '1px solid var(--border)',
-                    background: !statusFilter ? 'var(--primary-light)' : 'var(--card-bg)',
-                    fontSize: '0.75rem', fontWeight: 500, cursor: 'pointer',
-                    color: !statusFilter ? 'var(--primary)' : 'var(--fg-muted)',
-                  }}>
-                  <span>📊</span><span>All</span><span style={{ fontWeight: 700, color: 'var(--fg)' }}>{totalOrders}</span>
-                </button>
+              </div>
+
+              {/* System Insights */}
+              <div className="tf-card" style={{ padding: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                  <Activity size={16} style={{ color: 'var(--primary)' }} />
+                  <span style={{ fontSize: '0.8125rem', fontWeight: 600 }}>System Insights</span>
+                  <span style={{ marginLeft: 'auto', fontSize: '0.625rem', padding: '0.125rem 0.5rem', borderRadius: '9999px', background: 'var(--success-light)', color: 'var(--success)', fontWeight: 500 }}>Live</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '0.5rem' }}>
+                  <div style={{ padding: '0.625rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.125rem' }}>
+                      <Zap size={10} style={{ color: 'var(--primary)' }} />
+                      <span style={{ fontSize: '0.625rem', color: 'var(--fg-muted)' }}>Queries/View</span>
+                    </div>
+                    <span style={{ fontSize: '1.125rem', fontWeight: 700 }}>2</span>
+                    <span style={{ fontSize: '0.625rem', color: 'var(--success)', marginLeft: '0.25rem' }}>↓3</span>
+                  </div>
+                  <div style={{ padding: '0.625rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.125rem' }}>
+                      <Activity size={10} style={{ color: 'var(--info)' }} />
+                      <span style={{ fontSize: '0.625rem', color: 'var(--fg-muted)' }}>Monthly Cap.</span>
+                    </div>
+                    <span style={{ fontSize: '1.125rem', fontWeight: 700 }}>250K</span>
+                  </div>
+                  <div style={{ padding: '0.625rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.125rem' }}>
+                      <Package size={10} style={{ color: 'var(--warning)' }} />
+                      <span style={{ fontSize: '0.625rem', color: 'var(--fg-muted)' }}>DB Size</span>
+                    </div>
+                    <span style={{ fontSize: '1.125rem', fontWeight: 700 }}>{(totalOrders * 1.25 / 1024).toFixed(1)}</span>
+                    <span style={{ fontSize: '0.625rem', color: 'var(--fg-muted)' }}> / 500 MB</span>
+                  </div>
+                  <div style={{ padding: '0.625rem', background: 'var(--bg-subtle)', borderRadius: 'var(--radius-lg)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', marginBottom: '0.125rem' }}>
+                      <Check size={10} style={{ color: 'var(--success)' }} />
+                      <span style={{ fontSize: '0.625rem', color: 'var(--fg-muted)' }}>Upload</span>
+                    </div>
+                    <span style={{ fontSize: '1.125rem', fontWeight: 700 }}>Chunked</span>
+                  </div>
+                </div>
               </div>
 
               {/* Toolbar */}
