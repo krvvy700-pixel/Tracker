@@ -9,6 +9,14 @@ import Papa from 'papaparse';
 const BATCH_SIZE = 500;
 const PARALLEL_LIMIT = 50;
 
+// Generate tracking ID: ST + 10 uppercase alphanumeric chars
+function generateTrackingId(): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let id = 'ST';
+  for (let i = 0; i < 10; i++) id += chars[Math.floor(Math.random() * chars.length)];
+  return id;
+}
+
 export async function POST(request: NextRequest) {
   const user = getAuthFromRequest(request);
   if (!user || (user.role !== 'admin' && user.role !== 'manager')) {
@@ -108,6 +116,7 @@ export async function POST(request: NextRequest) {
           order_total: order.order_total,
           is_cancelled: order.is_cancelled,
           tracking_status: order.is_cancelled ? 'Cancelled' : 'Order Placed',
+          tracking_id: generateTrackingId(),
           ...(businessId ? { business_id: businessId } : {}),
         };
       });
@@ -175,7 +184,7 @@ export async function POST(request: NextRequest) {
       order_id: o.order_id,
       status: o.is_cancelled ? 'Cancelled' : 'Order Placed',
       changed_by: user.username,
-      notes: `CSV import (chunk ${chunkIndex + 1}/${totalChunks})`,
+      notes: '',
     }));
 
     for (let i = 0; i < historyRows.length; i += BATCH_SIZE) {

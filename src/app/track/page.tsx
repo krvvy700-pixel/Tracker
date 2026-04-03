@@ -166,7 +166,7 @@ export default function TrackingPage() {
                         </div>
                         <div style={{ paddingBottom: '1.25rem', flex: 1 }}>
                           <p style={{ fontSize: '0.8125rem' }}><span style={{ fontWeight: 600 }}>Activity : </span>{act.activity}</p>
-                          {act.notes && act.notes !== `Status updated to ${act.activity}` && (
+                          {act.notes && act.notes.trim() !== '' && !act.notes.startsWith('Status updated to') && !act.notes.startsWith('CSV import') && (
                             <p style={{ fontSize: '0.75rem', color: 'var(--fg-muted)', marginTop: '0.125rem', fontStyle: 'italic' }}>📝 {act.notes}</p>
                           )}
                         </div>
