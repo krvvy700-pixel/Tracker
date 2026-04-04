@@ -1155,12 +1155,18 @@ export default function AdminDashboard() {
                         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
                         body: JSON.stringify({ orderIds: Array.from(selectedOrders), status: emailStatus }),
                       });
+                      const data = await res.json();
                       if (res.ok) {
-                        const data = await res.json();
-                        showAlert('success', `📧 ${data.sent} emails sent${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
-                        setShowEmailModal(false);
-                        setSelectedOrders(new Set());
-                      } else { showAlert('error', 'Email sending failed'); }
+                        if (data.sent > 0) {
+                          showAlert('success', `📧 ${data.sent} emails sent${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
+                          setShowEmailModal(false);
+                          setSelectedOrders(new Set());
+                        } else {
+                          const debugMsg = data.debug ? ` | Gmail configured: ${data.debug.gmailConfigured} | Template: ${data.debug.templateExists ?? 'N/A'} | Orders with email: ${data.debug.ordersWithEmail ?? 'N/A'}` : '';
+                          const errMsg = data.errors?.length > 0 ? ` | Error: ${data.errors[0]}` : '';
+                          showAlert('error', `0 emails sent${errMsg}${debugMsg}`);
+                        }
+                      } else { showAlert('error', data.error || 'Email sending failed'); }
                     } catch { showAlert('error', 'Email sending failed'); }
                     finally { setSendingEmail(false); }
                   }}

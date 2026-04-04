@@ -85,12 +85,23 @@ export async function POST(request: NextRequest) {
       .filter((e): e is NonNullable<typeof e> => e !== null);
 
     if (emails.length === 0) {
+      // Diagnose why no emails were generated
+      const hasEmailCount = withEmail.length;
+      const templateExists = ['Order Placed', 'Processing', 'Packed', 'Shipped', 'In Transit', 'Out for Delivery', 'Delivered'].includes(status);
       return NextResponse.json({
         sent: 0,
         failed: 0,
         noEmail: noEmail.length,
         noEmailOrders: noEmail,
-        message: 'No emails to send (no valid email addresses or unsupported status)',
+        message: 'No emails to send',
+        debug: {
+          totalOrders: orders.length,
+          ordersWithEmail: hasEmailCount,
+          ordersWithoutEmail: noEmail.length,
+          templateExists,
+          statusRequested: status,
+          gmailConfigured: !!process.env.GMAIL_USER,
+        },
       });
     }
 
@@ -119,6 +130,11 @@ export async function POST(request: NextRequest) {
       noEmailOrders: noEmail,
       errors: result.errors,
       message: `${result.sent} emails sent, ${result.failed} failed, ${noEmail.length} have no email`,
+      debug: {
+        gmailConfigured: !!process.env.GMAIL_USER,
+        gmailPasswordSet: !!process.env.GMAIL_APP_PASSWORD,
+        baseUrl: BASE_URL || 'NOT SET',
+      },
     });
   } catch (err) {
     console.error('Send email error:', err);
