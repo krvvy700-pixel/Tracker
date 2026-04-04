@@ -112,7 +112,33 @@ export async function PATCH(request: NextRequest) {
 
     await getSupabaseAdmin().from('tracking_history').insert(historyEntries);
 
-    return NextResponse.json({ success: true, updated: orderIds.length });
+    // ═══ Auto-send status update email ═══
+    let emailSent = 0;
+    let emailNoEmail = 0;
+    try {
+      const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://shiptrack.store'}/api/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: request.headers.get('Authorization') || '',
+        },
+        body: JSON.stringify({ orderIds, status }),
+      });
+      if (emailRes.ok) {
+        const emailData = await emailRes.json();
+        emailSent = emailData.sent || 0;
+        emailNoEmail = emailData.noEmail || 0;
+      }
+    } catch (emailErr) {
+      console.error('Auto-email failed (non-blocking):', emailErr);
+    }
+
+    return NextResponse.json({
+      success: true,
+      updated: orderIds.length,
+      emailsSent: emailSent,
+      emailsNoEmail: emailNoEmail,
+    });
   } catch {
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
   }

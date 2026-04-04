@@ -45,6 +45,8 @@ export default function AdminDashboard() {
   const [brands, setBrands] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [emailFilter, setEmailFilter] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
 
   // Upload
   const [uploading, setUploading] = useState(false);
@@ -226,7 +228,10 @@ export default function AdminDashboard() {
         }),
       });
       if (res.ok) {
-        showAlert('success', `Updated ${selectedOrders.size} orders to "${bulkStatus}"`);
+        const data = await res.json();
+        const emailMsg = data.emailsSent > 0 ? ` | 📧 ${data.emailsSent} emails sent` : '';
+        const noEmailMsg = data.emailsNoEmail > 0 ? ` | ⚠️ ${data.emailsNoEmail} have no email` : '';
+        showAlert('success', `Updated ${selectedOrders.size} orders to "${bulkStatus}"${emailMsg}${noEmailMsg}`);
         setSelectedOrders(new Set()); setShowStatusModal(false);
         setBulkStatus(''); setBulkTrackingId(''); setBulkCourier(''); setBulkNotes(''); setBulkEstDelivery('');
         fetchOrders();
@@ -557,6 +562,11 @@ export default function AdminDashboard() {
                   <option value="">All Brands</option>
                   {brands.map((b) => (<option key={b} value={b}>{b}</option>))}
                 </select>
+                <select className="form-select" value={emailFilter} onChange={(e) => { setEmailFilter(e.target.value); setPage(1); }}>
+                  <option value="">📧 All</option>
+                  <option value="has_email">✅ Has Email</option>
+                  <option value="no_email">📵 No Email (WhatsApp)</option>
+                </select>
               </div>
 
               {/* Bulk bar */}
@@ -566,6 +576,27 @@ export default function AdminDashboard() {
                   <span style={{ fontSize: '0.875rem', color: 'var(--fg-muted)' }}>selected</span>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
                     <button className="btn btn-primary btn-sm" onClick={() => setShowStatusModal(true)}>Update Status</button>
+                    <button className="btn btn-sm" disabled={sendingEmail}
+                      style={{ background: 'var(--success)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                      onClick={async () => {
+                        setSendingEmail(true);
+                        try {
+                          const res = await fetch('/api/send-email', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                            body: JSON.stringify({ orderIds: Array.from(selectedOrders), status: 'Order Placed' }),
+                          });
+                          if (res.ok) {
+                            const data = await res.json();
+                            showAlert('success', `📧 ${data.sent} emails sent${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
+                          } else { showAlert('error', 'Email sending failed'); }
+                        } catch { showAlert('error', 'Email sending failed'); }
+                        finally { setSendingEmail(false); }
+                      }}
+                    >
+                      {sendingEmail ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
+                      Send Email
+                    </button>
                     <button className="btn btn-outline btn-sm" onClick={() => setSelectedOrders(new Set())}>Clear</button>
                   </div>
                 </div>
@@ -597,7 +628,13 @@ export default function AdminDashboard() {
                           </tr>
                         </thead>
                         <tbody>
-                          {orders.map((order) => (
+                          {orders
+                            .filter((o) => {
+                              if (emailFilter === 'has_email') return o.customer_email && o.customer_email.includes('@');
+                              if (emailFilter === 'no_email') return !o.customer_email || !o.customer_email.includes('@');
+                              return true;
+                            })
+                            .map((order) => (
                             <tr key={order.id}>
                               {hasPermission('update_status') && (
                                 <td><input type="checkbox" className="tf-checkbox" checked={selectedOrders.has(order.order_id)} onChange={() => toggleSelectOrder(order.order_id)} /></td>
@@ -605,7 +642,12 @@ export default function AdminDashboard() {
                               <td><span style={{ fontWeight: 600, color: 'var(--primary)' }}>{order.order_id}</span></td>
                               <td className="col-hide-md">
                                 <div>
-                                  <p style={{ fontWeight: 500 }}>{order.customer_name}</p>
+                                  <p style={{ fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                    {order.customer_name}
+                                    {order.customer_email && order.customer_email.includes('@')
+                                      ? <span title="Has email" style={{ fontSize: '0.625rem', color: 'var(--success)' }}>📧</span>
+                                      : <span title="No email — WhatsApp" style={{ fontSize: '0.625rem', color: 'var(--warning)' }}>📵</span>}
+                                  </p>
                                   {order.customer_email && <p style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>{order.customer_email}</p>}
                                 </div>
                               </td>
