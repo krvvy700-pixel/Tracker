@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromRequest } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
-import { sendBatchEmails } from '@/lib/ses-client';
+import { sendBatchEmails } from '@/lib/gmail-client';
 import { generateTrackingEmail } from '@/lib/email-templates';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://shiptrack.store';
+const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || '';
 
 export async function POST(request: NextRequest) {
   const user = getAuthFromRequest(request);

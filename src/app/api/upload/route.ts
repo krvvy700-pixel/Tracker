@@ -191,33 +191,8 @@ export async function POST(request: NextRequest) {
       const batch = historyRows.slice(i, i + BATCH_SIZE);
       await getSupabaseAdmin().from('tracking_history').insert(batch);
     }
-    // ═══ STEP 7: Auto-send "Order Placed" emails for new orders ═══
-    let emailSent = 0;
-    let emailNoEmail = 0;
-    const newOrderIds = newOrders.map((o) => o.order_id);
 
-    if (newOrderIds.length > 0) {
-      try {
-        // Fire-and-forget email sending (non-blocking for upload response)
-        const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://shiptrack.store'}/api/send-email`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: request.headers.get('Authorization') || '',
-          },
-          body: JSON.stringify({ orderIds: newOrderIds, status: 'Order Placed' }),
-        });
-        if (emailRes.ok) {
-          const emailData = await emailRes.json();
-          emailSent = emailData.sent || 0;
-          emailNoEmail = emailData.noEmail || 0;
-        }
-      } catch (emailErr) {
-        console.error('Auto-email failed (non-blocking):', emailErr);
-      }
-    }
-
-    // ═══ STEP 8: Log (only on last chunk) ═══
+    // ═══ STEP 7: Log (only on last chunk) ═══
     if (isLastChunk) {
       await getSupabaseAdmin().from('upload_logs').insert({
         filename: file.name,
@@ -233,13 +208,12 @@ export async function POST(request: NextRequest) {
       success: true,
       chunk: chunkIndex,
       totalChunks,
+      newOrderIds: newOrders.map((o) => o.order_id),
       stats: {
         ...stats,
         newOrders: newCount,
         updatedOrders: updatedCount,
         brandsDetected: brandArr.length,
-        emailsSent: emailSent,
-        emailsNoEmail: emailNoEmail,
       },
     });
   } catch (err) {

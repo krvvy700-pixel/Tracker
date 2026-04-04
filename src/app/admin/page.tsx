@@ -47,12 +47,17 @@ export default function AdminDashboard() {
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [emailFilter, setEmailFilter] = useState('');
   const [sendingEmail, setSendingEmail] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
+  const [emailStatus, setEmailStatus] = useState('');
 
   // Upload
   const [uploading, setUploading] = useState(false);
   const [uploadResult, setUploadResult] = useState<Record<string, unknown> | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0, percent: 0 });
+  const [showUploadEmailPrompt, setShowUploadEmailPrompt] = useState(false);
+  const [uploadNewOrderIds, setUploadNewOrderIds] = useState<string[]>([]);
+  const [sendingUploadEmails, setSendingUploadEmails] = useState(false);
 
   // Bulk status modal
   const [showStatusModal, setShowStatusModal] = useState(false);
@@ -179,6 +184,7 @@ export default function AdminDashboard() {
 
       // 3. Send chunks sequentially
       let totalNew = 0, totalUpdated = 0, totalBrands = 0;
+      const allNewOrderIds: string[] = [];
 
       for (let i = 0; i < chunks.length; i++) {
         const blob = new Blob([chunks[i]], { type: 'text/csv' });
@@ -200,6 +206,7 @@ export default function AdminDashboard() {
         totalNew += data.stats?.newOrders || 0;
         totalUpdated += data.stats?.updatedOrders || 0;
         totalBrands = Math.max(totalBrands, data.stats?.brandsDetected || 0);
+        if (data.newOrderIds) allNewOrderIds.push(...data.newOrderIds);
 
         setUploadProgress({ current: i + 1, total: chunks.length, percent: Math.round(((i + 1) / chunks.length) * 100) });
       }
@@ -207,6 +214,12 @@ export default function AdminDashboard() {
       setUploadResult({ total: totalRows, unique: totalNew + totalUpdated, newOrders: totalNew, updatedOrders: totalUpdated });
       showAlert('success', `Upload complete! ${totalNew} new, ${totalUpdated} updated, ${totalBrands} brands detected`);
       fetchOrders(); fetchBrands(); fetchBusinesses();
+
+      // Show email prompt if there are new orders
+      if (allNewOrderIds.length > 0) {
+        setUploadNewOrderIds(allNewOrderIds);
+        setShowUploadEmailPrompt(true);
+      }
     } catch { showAlert('error', 'Upload failed'); }
     finally { setUploading(false); }
   };
@@ -228,10 +241,7 @@ export default function AdminDashboard() {
         }),
       });
       if (res.ok) {
-        const data = await res.json();
-        const emailMsg = data.emailsSent > 0 ? ` | 📧 ${data.emailsSent} emails sent` : '';
-        const noEmailMsg = data.emailsNoEmail > 0 ? ` | ⚠️ ${data.emailsNoEmail} have no email` : '';
-        showAlert('success', `Updated ${selectedOrders.size} orders to "${bulkStatus}"${emailMsg}${noEmailMsg}`);
+        showAlert('success', `Updated ${selectedOrders.size} orders to "${bulkStatus}"`);
         setSelectedOrders(new Set()); setShowStatusModal(false);
         setBulkStatus(''); setBulkTrackingId(''); setBulkCourier(''); setBulkNotes(''); setBulkEstDelivery('');
         fetchOrders();
@@ -578,23 +588,9 @@ export default function AdminDashboard() {
                     <button className="btn btn-primary btn-sm" onClick={() => setShowStatusModal(true)}>Update Status</button>
                     <button className="btn btn-sm" disabled={sendingEmail}
                       style={{ background: 'var(--success)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                      onClick={async () => {
-                        setSendingEmail(true);
-                        try {
-                          const res = await fetch('/api/send-email', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                            body: JSON.stringify({ orderIds: Array.from(selectedOrders), status: 'Order Placed' }),
-                          });
-                          if (res.ok) {
-                            const data = await res.json();
-                            showAlert('success', `📧 ${data.sent} emails sent${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
-                          } else { showAlert('error', 'Email sending failed'); }
-                        } catch { showAlert('error', 'Email sending failed'); }
-                        finally { setSendingEmail(false); }
-                      }}
+                      onClick={() => { setEmailStatus(''); setShowEmailModal(true); }}
                     >
-                      {sendingEmail ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
+                      <Mail size={14} />
                       Send Email
                     </button>
                     <button className="btn btn-outline btn-sm" onClick={() => setSelectedOrders(new Set())}>Clear</button>
@@ -1111,6 +1107,123 @@ export default function AdminDashboard() {
               <div className="modal-actions">
                 <button className="btn btn-outline" onClick={() => setShowBizModal(false)}>Cancel</button>
                 <button className="btn btn-primary" onClick={handleSaveBusiness} disabled={!bizForm.name}>{editBiz ? 'Update' : 'Create'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Email Status Picker Modal */}
+      {showEmailModal && (
+        <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">📧 Send Email to {selectedOrders.size} Orders</h3>
+                <p className="modal-subtitle">Choose which email template to send</p>
+              </div>
+              <button className="btn-icon" onClick={() => setShowEmailModal(false)}><X size={16} /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="form-group">
+                <label className="form-label">Email Template (Status)</label>
+                <select className="form-select" style={{ width: '100%' }} value={emailStatus} onChange={(e) => setEmailStatus(e.target.value)}>
+                  <option value="">Select template...</option>
+                  {TRACKING_STAGES_WITH_SPECIAL.filter(s => s !== 'Cancelled' && s !== 'RTO').map((s) => (
+                    <option key={s} value={s}>{STAGE_ICONS[s]} {s}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="info-box">
+                <Info size={16} />
+                <div>
+                  <p className="info-box-text">
+                    This will send a professional tracking email with the <strong>{emailStatus || '...'}</strong> template to all selected orders that have an email address.
+                  </p>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-outline" onClick={() => setShowEmailModal(false)}>Cancel</button>
+                <button
+                  className="btn btn-primary"
+                  disabled={!emailStatus || sendingEmail}
+                  onClick={async () => {
+                    setSendingEmail(true);
+                    try {
+                      const res = await fetch('/api/send-email', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ orderIds: Array.from(selectedOrders), status: emailStatus }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        showAlert('success', `📧 ${data.sent} emails sent${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
+                        setShowEmailModal(false);
+                        setSelectedOrders(new Set());
+                      } else { showAlert('error', 'Email sending failed'); }
+                    } catch { showAlert('error', 'Email sending failed'); }
+                    finally { setSendingEmail(false); }
+                  }}
+                >
+                  {sendingEmail ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
+                  {sendingEmail ? 'Sending...' : 'Send Emails'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Upload Email Prompt Modal */}
+      {showUploadEmailPrompt && (
+        <div className="modal-overlay" onClick={() => setShowUploadEmailPrompt(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">📧 Send Order Confirmation Emails?</h3>
+                <p className="modal-subtitle">{uploadNewOrderIds.length} new orders were added</p>
+              </div>
+              <button className="btn-icon" onClick={() => setShowUploadEmailPrompt(false)}><X size={16} /></button>
+            </div>
+            <div className="space-y-4">
+              <div className="info-box">
+                <Mail size={16} />
+                <div>
+                  <p className="info-box-text">
+                    Send <strong>&quot;Order Placed&quot;</strong> confirmation emails to all {uploadNewOrderIds.length} newly added orders that have email addresses?
+                  </p>
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-outline" onClick={() => { setShowUploadEmailPrompt(false); setUploadNewOrderIds([]); }}>
+                  Skip
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={sendingUploadEmails}
+                  onClick={async () => {
+                    setSendingUploadEmails(true);
+                    try {
+                      const res = await fetch('/api/send-email', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify({ orderIds: uploadNewOrderIds, status: 'Order Placed' }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        showAlert('success', `📧 ${data.sent} emails sent${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
+                      } else { showAlert('error', 'Email sending failed'); }
+                    } catch { showAlert('error', 'Email sending failed'); }
+                    finally {
+                      setSendingUploadEmails(false);
+                      setShowUploadEmailPrompt(false);
+                      setUploadNewOrderIds([]);
+                    }
+                  }}
+                >
+                  {sendingUploadEmails ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
+                  {sendingUploadEmails ? 'Sending...' : 'Send Emails'}
+                </button>
               </div>
             </div>
           </div>

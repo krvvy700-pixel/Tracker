@@ -1,14 +1,15 @@
-import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
+import nodemailer from 'nodemailer';
 
-const sesClient = new SESClient({
-  region: process.env.AWS_SES_REGION || 'ap-south-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID || '',
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || '',
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.GMAIL_USER || '',
+    pass: process.env.GMAIL_APP_PASSWORD || '',
   },
 });
 
-const FROM_EMAIL = process.env.SES_FROM_EMAIL || 'tracking@shiptrack.store';
+const FROM_EMAIL = process.env.GMAIL_USER || '';
+const FROM_NAME = process.env.GMAIL_FROM_NAME || 'ShipTrack';
 
 interface EmailPayload {
   to: string;
@@ -21,26 +22,26 @@ export async function sendEmail({ to, subject, html }: EmailPayload): Promise<{ 
     return { success: false, error: 'Invalid email address' };
   }
 
-  try {
-    const command = new SendEmailCommand({
-      Source: FROM_EMAIL,
-      Destination: { ToAddresses: [to] },
-      Message: {
-        Subject: { Data: subject, Charset: 'UTF-8' },
-        Body: { Html: { Data: html, Charset: 'UTF-8' } },
-      },
-    });
+  if (!FROM_EMAIL) {
+    return { success: false, error: 'GMAIL_USER not configured' };
+  }
 
-    await sesClient.send(command);
+  try {
+    await transporter.sendMail({
+      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
+      to,
+      subject,
+      html,
+    });
     return { success: true };
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown SES error';
-    console.error(`SES send failed to ${to}:`, message);
+    const message = err instanceof Error ? err.message : 'Unknown Gmail error';
+    console.error(`Gmail send failed to ${to}:`, message);
     return { success: false, error: message };
   }
 }
 
-// Batch send with rate limiting (SES default: 14/sec)
+// Batch send with rate limiting (Gmail Workspace: ~2000/day, pace at 5/sec)
 export async function sendBatchEmails(
   emails: EmailPayload[]
 ): Promise<{ sent: number; failed: number; errors: string[] }> {
@@ -48,8 +49,8 @@ export async function sendBatchEmails(
   let failed = 0;
   const errors: string[] = [];
 
-  // Process in batches of 10 with 1-second gaps to stay under SES rate limit
-  const BATCH = 10;
+  // Process in batches of 5 with 1-second gaps to stay under Gmail rate limit
+  const BATCH = 5;
   for (let i = 0; i < emails.length; i += BATCH) {
     const batch = emails.slice(i, i + BATCH);
     const results = await Promise.all(batch.map((e) => sendEmail(e)));
@@ -64,7 +65,7 @@ export async function sendBatchEmails(
 
     // Rate limit pause between batches
     if (i + BATCH < emails.length) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1200));
     }
   }
 
