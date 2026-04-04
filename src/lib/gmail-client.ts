@@ -2,6 +2,9 @@ import nodemailer from 'nodemailer';
 
 const transporter = nodemailer.createTransport({
   service: 'gmail',
+  pool: true,           // Reuse one SMTP connection for all emails
+  maxConnections: 1,    // Only 1 connection to avoid "too many logins"
+  maxMessages: 100,     // Send up to 100 emails per connection
   auth: {
     user: process.env.GMAIL_USER || '',
     pass: process.env.GMAIL_APP_PASSWORD || '',
@@ -41,7 +44,7 @@ export async function sendEmail({ to, subject, html }: EmailPayload): Promise<{ 
   }
 }
 
-// Batch send with rate limiting (Gmail Workspace: ~2000/day, pace at 5/sec)
+// Batch send — sequential with delays to stay under Gmail rate limit
 export async function sendBatchEmails(
   emails: EmailPayload[]
 ): Promise<{ sent: number; failed: number; errors: string[] }> {
@@ -49,23 +52,26 @@ export async function sendBatchEmails(
   let failed = 0;
   const errors: string[] = [];
 
-  // Process in batches of 5 with 1-second gaps to stay under Gmail rate limit
-  const BATCH = 5;
-  for (let i = 0; i < emails.length; i += BATCH) {
-    const batch = emails.slice(i, i + BATCH);
-    const results = await Promise.all(batch.map((e) => sendEmail(e)));
+  // Send one at a time with a short delay — pool reuses the same connection
+  for (let i = 0; i < emails.length; i++) {
+    const result = await sendEmail(emails[i]);
 
-    for (const r of results) {
-      if (r.success) sent++;
-      else {
-        failed++;
-        if (r.error) errors.push(r.error);
+    if (result.success) {
+      sent++;
+    } else {
+      failed++;
+      if (result.error) errors.push(result.error);
+      // If we get a rate limit error, stop sending
+      if (result.error?.includes('Too many') || result.error?.includes('limit')) {
+        errors.push(`Stopped after ${i + 1}/${emails.length} — Gmail rate limit hit`);
+        failed += emails.length - i - 1;
+        break;
       }
     }
 
-    // Rate limit pause between batches
-    if (i + BATCH < emails.length) {
-      await new Promise((resolve) => setTimeout(resolve, 1200));
+    // Small delay between emails to be gentle on Gmail
+    if (i < emails.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 
