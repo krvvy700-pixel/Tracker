@@ -24,26 +24,51 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No status provided' }, { status: 400 });
     }
 
-    // Fetch orders with business info
-    const { data: orders, error: fetchError } = await getSupabaseAdmin()
-      .from('orders')
-      .select(`
-        order_id, customer_name, customer_email, tracking_id, courier_partner,
-        tracking_token, estimated_delivery, order_total, city,
-        business_id, order_items (product_name),
-        businesses (name, logo_url, support_email, support_phone)
-      `)
-      .in('order_id', orderIds);
+    // Fetch orders with business info (batch .in() for large sets)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allOrders: any[] = [];
+    for (let i = 0; i < orderIds.length; i += 100) {
+      const batch = orderIds.slice(i, i + 100);
+      const { data, error } = await getSupabaseAdmin()
+        .from('orders')
+        .select(`
+          order_id, customer_name, customer_email, tracking_id, courier_partner,
+          tracking_token, estimated_delivery, order_total, city,
+          business_id, order_items (product_name),
+          businesses (name, logo_url, support_email, support_phone)
+        `)
+        .in('order_id', batch);
+      if (error) continue;
+      if (data) allOrders.push(...data);
+    }
 
-    if (fetchError || !orders) {
+    const orders = allOrders;
+
+    if (!orders || orders.length === 0) {
       return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 });
+    }
+
+    // Check which orders already received email for this status (dedup)
+    const alreadySent = new Set<string>();
+    for (let i = 0; i < orderIds.length; i += 100) {
+      const batch = orderIds.slice(i, i + 100);
+      const { data: logs } = await getSupabaseAdmin()
+        .from('email_logs')
+        .select('order_id')
+        .in('order_id', batch)
+        .eq('status', status)
+        .eq('success', true);
+      if (logs) logs.forEach((l) => alreadySent.add(l.order_id));
     }
 
     const withEmail: typeof orders = [];
     const noEmail: string[] = [];
+    const skipped: string[] = [];
 
     for (const order of orders) {
-      if (order.customer_email && order.customer_email.includes('@')) {
+      if (alreadySent.has(order.order_id)) {
+        skipped.push(order.order_id);
+      } else if (order.customer_email && order.customer_email.includes('@')) {
         withEmail.push(order);
       } else {
         noEmail.push(order.order_id);
@@ -105,7 +130,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Send via SES
+    // Send via Gmail
     const result = await sendBatchEmails(emails);
 
     // Log to email_logs table
@@ -129,7 +154,8 @@ export async function POST(request: NextRequest) {
       noEmail: noEmail.length,
       noEmailOrders: noEmail,
       errors: result.errors,
-      message: `${result.sent} emails sent, ${result.failed} failed, ${noEmail.length} have no email`,
+      skipped: skipped.length,
+      message: `${result.sent} emails sent, ${result.failed} failed, ${skipped.length} already sent, ${noEmail.length} have no email`,
       debug: {
         gmailConfigured: !!process.env.GMAIL_USER,
         gmailPasswordSet: !!process.env.GMAIL_APP_PASSWORD,

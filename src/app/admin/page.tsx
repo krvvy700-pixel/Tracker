@@ -49,6 +49,13 @@ export default function AdminDashboard() {
   const [sendingEmail, setSendingEmail] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [emailStatus, setEmailStatus] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [emailsSentToday, setEmailsSentToday] = useState(0);
+  const [emailedOrderIds, setEmailedOrderIds] = useState<Set<string>>(new Set());
+  const [showRangeModal, setShowRangeModal] = useState(false);
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
 
   // Upload
   const [uploading, setUploading] = useState(false);
@@ -85,7 +92,8 @@ export default function AdminDashboard() {
   // Alert
   const [alert, setAlert] = useState<{ type: string; message: string } | null>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const limit = 50;
+  const [limit, setLimit] = useState(50);
+  const GMAIL_DAILY_LIMIT = 2000;
 
   useEffect(() => {
     const savedToken = localStorage.getItem('auth_token');
@@ -114,12 +122,41 @@ export default function AdminDashboard() {
       if (search) params.set('search', search);
       if (statusFilter) params.set('status', statusFilter);
       if (brandFilter) params.set('brand', brandFilter);
+      if (dateFrom) params.set('dateFrom', dateFrom);
+      if (dateTo) params.set('dateTo', dateTo);
       const res = await fetch(`/api/orders?${params}`, { headers: { Authorization: `Bearer ${token}` } });
       const data = await res.json();
       if (res.ok) { setOrders(data.orders); setTotalOrders(data.total); }
     } catch { showAlert('error', 'Failed to load orders'); }
     finally { setLoading(false); }
-  }, [token, page, search, statusFilter, brandFilter]);
+  }, [token, page, limit, search, statusFilter, brandFilter, dateFrom, dateTo]);
+
+  // Fetch email stats
+  const fetchEmailStats = useCallback(async () => {
+    if (!token) return;
+    try {
+      const res = await fetch('/api/send-email', { headers: { Authorization: `Bearer ${token}` } });
+      const data = await res.json();
+      if (res.ok) setEmailsSentToday(data.sentToday || 0);
+    } catch { /* ignore */ }
+  }, [token]);
+
+  // Fetch which orders on current page have been emailed
+  const fetchEmailedOrders = useCallback(async () => {
+    if (!token || orders.length === 0) return;
+    try {
+      const ids = orders.map(o => o.order_id);
+      const res = await fetch('/api/send-email/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ orderIds: ids }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEmailedOrderIds(new Set(data.emailedIds || []));
+      }
+    } catch { /* ignore */ }
+  }, [token, orders]);
 
   const fetchBrands = useCallback(async () => {
     if (!token) return;
@@ -148,8 +185,15 @@ export default function AdminDashboard() {
     } catch { /* ignore */ }
   }, [token]);
 
-  useEffect(() => { if (token) { fetchOrders(); fetchBrands(); fetchBusinesses(); } }, [token, fetchOrders, fetchBrands, fetchBusinesses]);
+  useEffect(() => { if (token) { fetchOrders(); fetchBrands(); fetchBusinesses(); fetchEmailStats(); } }, [token, fetchOrders, fetchBrands, fetchBusinesses, fetchEmailStats]);
   useEffect(() => { if (activeTab === 'team') fetchTeamUsers(); }, [activeTab, fetchTeamUsers]);
+  useEffect(() => { fetchEmailedOrders(); }, [fetchEmailedOrders]);
+  // Auto-refresh email stats every 30 seconds
+  useEffect(() => {
+    if (!token) return;
+    const interval = setInterval(fetchEmailStats, 30000);
+    return () => clearInterval(interval);
+  }, [token, fetchEmailStats]);
 
   const handleSearchChange = (val: string) => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -380,7 +424,35 @@ export default function AdminDashboard() {
   };
 
   const toggleSelectAll = () => {
-    setSelectedOrders(selectedOrders.size === orders.length ? new Set() : new Set(orders.map((o) => o.order_id)));
+    const filteredOrders = orders.filter((o) => {
+      if (emailFilter === 'has_email') return o.customer_email && o.customer_email.includes('@');
+      if (emailFilter === 'no_email') return !o.customer_email || !o.customer_email.includes('@');
+      return true;
+    });
+    setSelectedOrders(selectedOrders.size === filteredOrders.length ? new Set() : new Set(filteredOrders.map((o) => o.order_id)));
+  };
+
+  const selectRange = (from: number, to: number) => {
+    const filteredOrders = orders.filter((o) => {
+      if (emailFilter === 'has_email') return o.customer_email && o.customer_email.includes('@');
+      if (emailFilter === 'no_email') return !o.customer_email || !o.customer_email.includes('@');
+      return true;
+    });
+    const rangeOrders = filteredOrders.slice(Math.max(0, from - 1), Math.min(to, filteredOrders.length));
+    const next = new Set(selectedOrders);
+    rangeOrders.forEach((o) => next.add(o.order_id));
+    setSelectedOrders(next);
+  };
+
+  const selectFirst = (count: number) => {
+    const filteredOrders = orders.filter((o) => {
+      if (emailFilter === 'has_email') return o.customer_email && o.customer_email.includes('@');
+      if (emailFilter === 'no_email') return !o.customer_email || !o.customer_email.includes('@');
+      return true;
+    });
+    const next = new Set(selectedOrders);
+    filteredOrders.slice(0, count).forEach((o) => next.add(o.order_id));
+    setSelectedOrders(next);
   };
 
   const toggleSelectOrder = (orderId: string) => {
@@ -558,8 +630,18 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              {/* Email Stats Bar */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', padding: '0.375rem 0.75rem', borderRadius: '9999px', background: emailsSentToday >= GMAIL_DAILY_LIMIT ? 'var(--danger-light)' : 'var(--primary-light)', fontSize: '0.75rem', fontWeight: 600 }}>
+                  <Mail size={12} />
+                  <span style={{ color: emailsSentToday >= GMAIL_DAILY_LIMIT ? 'var(--danger)' : 'var(--primary)' }}>
+                    {emailsSentToday.toLocaleString()} / {GMAIL_DAILY_LIMIT.toLocaleString()} emails today
+                  </span>
+                </div>
+              </div>
+
               {/* Toolbar */}
-              <div className="toolbar">
+              <div className="toolbar" style={{ flexWrap: 'wrap' }}>
                 <div className="toolbar-search">
                   <Search />
                   <input type="text" className="form-input" placeholder="Search by order ID, name, phone, email..." onChange={(e) => handleSearchChange(e.target.value)} />
@@ -577,6 +659,33 @@ export default function AdminDashboard() {
                   <option value="has_email">✅ Has Email</option>
                   <option value="no_email">📵 No Email (WhatsApp)</option>
                 </select>
+                <select className="form-select" value={limit} onChange={(e) => { setLimit(parseInt(e.target.value)); setPage(1); }}>
+                  <option value="50">50 / page</option>
+                  <option value="100">100 / page</option>
+                  <option value="500">500 / page</option>
+                </select>
+              </div>
+
+              {/* Date Filter */}
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <Calendar size={14} style={{ color: 'var(--fg-muted)' }} />
+                <span style={{ fontSize: '0.75rem', color: 'var(--fg-muted)', fontWeight: 500 }}>Date:</span>
+                <input type="date" className="form-input" style={{ width: 'auto', fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} />
+                <span style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>to</span>
+                <input type="date" className="form-input" style={{ width: 'auto', fontSize: '0.75rem', padding: '0.25rem 0.5rem' }} value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} />
+                {(dateFrom || dateTo) && (
+                  <button className="btn btn-outline btn-sm" style={{ fontSize: '0.625rem', padding: '0.125rem 0.5rem' }} onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}>
+                    Clear dates
+                  </button>
+                )}
+              </div>
+
+              {/* Batch Selection Bar */}
+              <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button className="btn btn-outline btn-sm" style={{ fontSize: '0.6875rem' }} onClick={() => selectFirst(100)}>+ Select 100</button>
+                <button className="btn btn-outline btn-sm" style={{ fontSize: '0.6875rem' }} onClick={() => selectFirst(500)}>+ Select 500</button>
+                <button className="btn btn-outline btn-sm" style={{ fontSize: '0.6875rem' }} onClick={() => setShowRangeModal(true)}>📏 Select Range</button>
+                <button className="btn btn-outline btn-sm" style={{ fontSize: '0.6875rem' }} onClick={toggleSelectAll}>{selectedOrders.size > 0 ? '☐ Deselect All' : '☑ Select All'}</button>
               </div>
 
               {/* Bulk bar */}
@@ -643,6 +752,7 @@ export default function AdminDashboard() {
                                     {order.customer_email && order.customer_email.includes('@')
                                       ? <span title="Has email" style={{ fontSize: '0.625rem', color: 'var(--success)' }}>📧</span>
                                       : <span title="No email — WhatsApp" style={{ fontSize: '0.625rem', color: 'var(--warning)' }}>📵</span>}
+                                  {emailedOrderIds.has(order.order_id) && <span title="Email already sent" style={{ fontSize: '0.625rem', color: 'var(--info)' }}>✉️</span>}
                                   </p>
                                   {order.customer_email && <p style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>{order.customer_email}</p>}
                                 </div>
@@ -1158,13 +1268,17 @@ export default function AdminDashboard() {
                       const data = await res.json();
                       if (res.ok) {
                         if (data.sent > 0) {
-                          showAlert('success', `📧 ${data.sent} emails sent${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
+                          const skipMsg = data.skipped > 0 ? ` | ⏭ ${data.skipped} already sent` : '';
+                          const noMsg = data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} no email` : '';
+                          showAlert('success', `📧 ${data.sent} emails sent${skipMsg}${noMsg}`);
                           setShowEmailModal(false);
                           setSelectedOrders(new Set());
+                          fetchEmailStats();
+                          fetchEmailedOrders();
                         } else {
-                          const debugMsg = data.debug ? ` | Gmail configured: ${data.debug.gmailConfigured} | Template: ${data.debug.templateExists ?? 'N/A'} | Orders with email: ${data.debug.ordersWithEmail ?? 'N/A'}` : '';
+                          const skipMsg = data.skipped > 0 ? ` | All ${data.skipped} already sent for this status` : '';
                           const errMsg = data.errors?.length > 0 ? ` | Error: ${data.errors[0]}` : '';
-                          showAlert('error', `0 emails sent${errMsg}${debugMsg}`);
+                          showAlert('error', `0 new emails sent${skipMsg}${errMsg}`);
                         }
                       } else { showAlert('error', data.error || 'Email sending failed'); }
                     } catch { showAlert('error', 'Email sending failed'); }
@@ -1229,6 +1343,48 @@ export default function AdminDashboard() {
                 >
                   {sendingUploadEmails ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
                   {sendingUploadEmails ? 'Sending...' : 'Send Emails'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Select Range Modal */}
+      {showRangeModal && (
+        <div className="modal-overlay" onClick={() => setShowRangeModal(false)}>
+          <div className="modal" style={{ maxWidth: '360px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div>
+                <h3 className="modal-title">📏 Select Range</h3>
+                <p className="modal-subtitle">Select orders by row number on current page</p>
+              </div>
+              <button className="btn-icon" onClick={() => setShowRangeModal(false)}><X size={16} /></button>
+            </div>
+            <div className="space-y-4">
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">From row</label>
+                  <input type="number" className="form-input" min="1" max={orders.length} value={rangeFrom} onChange={(e) => setRangeFrom(e.target.value)} placeholder="1" />
+                </div>
+                <span style={{ paddingTop: '1.5rem', color: 'var(--fg-muted)' }}>to</span>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">To row</label>
+                  <input type="number" className="form-input" min="1" max={orders.length} value={rangeTo} onChange={(e) => setRangeTo(e.target.value)} placeholder={orders.length.toString()} />
+                </div>
+              </div>
+              <div className="modal-actions">
+                <button className="btn btn-outline" onClick={() => setShowRangeModal(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={() => {
+                  const from = parseInt(rangeFrom) || 1;
+                  const to = parseInt(rangeTo) || orders.length;
+                  selectRange(from, to);
+                  setShowRangeModal(false);
+                  setRangeFrom('');
+                  setRangeTo('');
+                  showAlert('success', `Selected rows ${from} to ${to}`);
+                }}>
+                  Select
                 </button>
               </div>
             </div>

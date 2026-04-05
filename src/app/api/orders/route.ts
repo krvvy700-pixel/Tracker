@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAuthFromRequest } from '@/lib/auth';
 import { getSupabaseAdmin } from '@/lib/supabase';
 
+const BATCH_SIZE = 100; // Supabase .in() limit
+
 // GET all orders with filtering
 export async function GET(request: NextRequest) {
   const user = getAuthFromRequest(request);
@@ -13,8 +15,10 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get('search') || '';
   const status = searchParams.get('status') || '';
   const brand = searchParams.get('brand') || '';
+  const dateFrom = searchParams.get('dateFrom') || '';
+  const dateTo = searchParams.get('dateTo') || '';
   const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '50');
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 1000); // Cap at 1000
   const offset = (page - 1) * limit;
 
   let query = getSupabaseAdmin()
@@ -33,6 +37,14 @@ export async function GET(request: NextRequest) {
     } else {
       query = query.eq('tracking_status', status).eq('is_cancelled', false);
     }
+  }
+
+  // Date filter
+  if (dateFrom) {
+    query = query.gte('created_at', `${dateFrom}T00:00:00`);
+  }
+  if (dateTo) {
+    query = query.lte('created_at', `${dateTo}T23:59:59`);
   }
 
   if (brand) {
@@ -66,6 +78,7 @@ export async function GET(request: NextRequest) {
 }
 
 // PATCH - bulk update status + estimated delivery + notes
+// Batched to handle 500+ orders (Supabase .in() limit ~100)
 export async function PATCH(request: NextRequest) {
   const user = getAuthFromRequest(request);
   if (!user || user.role === 'viewer') {
@@ -93,16 +106,23 @@ export async function PATCH(request: NextRequest) {
     if (courierPartner) updateData.courier_partner = courierPartner;
     if (estimatedDelivery) updateData.estimated_delivery = estimatedDelivery;
 
-    const { error } = await getSupabaseAdmin()
-      .from('orders')
-      .update(updateData)
-      .in('order_id', orderIds);
+    // Batch update — split into chunks of 100 to avoid .in() limit
+    let totalUpdated = 0;
+    for (let i = 0; i < orderIds.length; i += BATCH_SIZE) {
+      const batch = orderIds.slice(i, i + BATCH_SIZE);
+      const { error } = await getSupabaseAdmin()
+        .from('orders')
+        .update(updateData)
+        .in('order_id', batch);
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) {
+        console.error(`Batch update failed at chunk ${i}:`, error.message);
+      } else {
+        totalUpdated += batch.length;
+      }
     }
 
-    // Add tracking history with notes
+    // Batch insert tracking history
     const historyEntries = orderIds.map((orderId: string) => ({
       order_id: orderId,
       status,
@@ -110,11 +130,15 @@ export async function PATCH(request: NextRequest) {
       notes: notes || `Status updated to ${status}`,
     }));
 
-    await getSupabaseAdmin().from('tracking_history').insert(historyEntries);
+    for (let i = 0; i < historyEntries.length; i += BATCH_SIZE) {
+      const batch = historyEntries.slice(i, i + BATCH_SIZE);
+      await getSupabaseAdmin().from('tracking_history').insert(batch);
+    }
 
     return NextResponse.json({
       success: true,
-      updated: orderIds.length,
+      updated: totalUpdated,
+      total: orderIds.length,
     });
   } catch {
     return NextResponse.json({ error: 'Update failed' }, { status: 500 });
@@ -135,9 +159,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'orderId required' }, { status: 400 });
     }
 
-    // Delete in order: items → history → order (FK constraints)
+    // Delete in order: items → history → email_logs → order (FK constraints)
     await getSupabaseAdmin().from('order_items').delete().eq('order_id', orderId);
     await getSupabaseAdmin().from('tracking_history').delete().eq('order_id', orderId);
+    await getSupabaseAdmin().from('email_logs').delete().eq('order_id', orderId);
     const { error } = await getSupabaseAdmin().from('orders').delete().eq('order_id', orderId);
 
     if (error) {
