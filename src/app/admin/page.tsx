@@ -1189,42 +1189,8 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Business Modal */}
-      {showBizModal && (
-        <div className="modal-overlay" onClick={() => setShowBizModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3 className="modal-title">{editBiz ? 'Edit Business' : 'Add Business'}</h3>
-              <button className="btn-icon" onClick={() => setShowBizModal(false)}><X size={16} /></button>
-            </div>
-            <div className="space-y-4">
-              <div className="form-group"><label className="form-label">Business Name</label><input type="text" className="form-input" placeholder="My Brand" value={bizForm.name} onChange={(e) => setBizForm({ ...bizForm, name: e.target.value })} /></div>
-              <div className="form-group">
-                <label className="form-label">Logo URL</label>
-                <input type="text" className="form-input" placeholder="https://example.com/logo.png" value={bizForm.logoUrl} onChange={(e) => setBizForm({ ...bizForm, logoUrl: e.target.value })} />
-                {bizForm.logoUrl && (
-                  <div className="logo-preview" style={{ marginTop: '0.5rem' }}>
-                    <img src={bizForm.logoUrl} alt="Preview" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                  </div>
-                )}
-              </div>
-              <div className="form-group"><label className="form-label">Support Email</label><input type="email" className="form-input" placeholder="support@brand.com" value={bizForm.supportEmail} onChange={(e) => setBizForm({ ...bizForm, supportEmail: e.target.value })} /></div>
-              <div className="form-group"><label className="form-label">Support Phone</label><input type="text" className="form-input" placeholder="+91 98765 43210" value={bizForm.supportPhone} onChange={(e) => setBizForm({ ...bizForm, supportPhone: e.target.value })} /></div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <input type="checkbox" id="isDefault" className="tf-checkbox" checked={bizForm.isDefault} onChange={(e) => setBizForm({ ...bizForm, isDefault: e.target.checked })} />
-                <label htmlFor="isDefault" style={{ fontSize: '0.875rem', cursor: 'pointer' }}>Set as default business</label>
-              </div>
-              <div className="modal-actions">
-                <button className="btn btn-outline" onClick={() => setShowBizModal(false)}>Cancel</button>
-                <button className="btn btn-primary" onClick={handleSaveBusiness} disabled={!bizForm.name}>{editBiz ? 'Update' : 'Create'}</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* Batch Email Status Picker Modal */}
-      )}
+
 
 
       {/* Select Range Modal */}
