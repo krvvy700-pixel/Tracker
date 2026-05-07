@@ -7,7 +7,7 @@ import {
   Package, Upload, Users, LogOut, Search, Eye, Link2, MessageCircle, Mail,
   ChevronLeft, ChevronRight, X, Check, Truck, AlertCircle, ShoppingBag,
   Loader2, FileUp, Info, UserPlus, Trash2, Building2, Plus, Lock, Unlock,
-  Activity, Zap, Calendar, StickyNote
+  Activity, Zap, Calendar, StickyNote, Settings
 } from 'lucide-react';
 
 /* ═══════════ TYPES ═══════════ */
@@ -26,7 +26,7 @@ interface Order {
 interface AuthUser { username: string; displayName: string; role: 'admin' | 'manager' | 'viewer'; }
 interface TeamUser { id: string; username: string; display_name: string; role: string; is_active: boolean; last_login: string; created_at: string; }
 interface Business { id: string; name: string; logo_url: string; support_email: string; support_phone: string; is_default: boolean; created_at: string; }
-type TabType = 'orders' | 'upload' | 'team' | 'businesses';
+type TabType = 'orders' | 'upload' | 'team' | 'settings';
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -84,11 +84,10 @@ export default function AdminDashboard() {
   const [showTeamModal, setShowTeamModal] = useState(false);
   const [newTeamUser, setNewTeamUser] = useState({ username: '', password: '', displayName: '', role: 'viewer' });
 
-  // Businesses
+  // Businesses / Brand Settings
   const [businesses, setBusinesses] = useState<Business[]>([]);
-  const [showBizModal, setShowBizModal] = useState(false);
-  const [editBiz, setEditBiz] = useState<Business | null>(null);
-  const [bizForm, setBizForm] = useState({ name: '', logoUrl: '', supportEmail: '', supportPhone: '', isDefault: false });
+  const [brandForm, setBrandForm] = useState({ name: '', logoUrl: '', supportEmail: '', supportPhone: '' });
+  const [savingBrand, setSavingBrand] = useState(false);
 
   // Alert
   const [alert, setAlert] = useState<{ type: string; message: string } | null>(null);
@@ -195,6 +194,13 @@ export default function AdminDashboard() {
     const interval = setInterval(fetchEmailStats, 30000);
     return () => clearInterval(interval);
   }, [token, fetchEmailStats]);
+  // Load brand form from businesses
+  useEffect(() => {
+    const defaultBiz = businesses.find(b => b.is_default) || businesses[0];
+    if (defaultBiz) {
+      setBrandForm({ name: defaultBiz.name, logoUrl: defaultBiz.logo_url || '', supportEmail: defaultBiz.support_email || '', supportPhone: defaultBiz.support_phone || '' });
+    }
+  }, [businesses]);
 
   const handleSearchChange = (val: string) => {
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -260,10 +266,26 @@ export default function AdminDashboard() {
       showAlert('success', `Upload complete! ${totalNew} new, ${totalUpdated} updated, ${totalBrands} brands detected`);
       fetchOrders(); fetchBrands(); fetchBusinesses();
 
-      // Show email prompt if there are new orders
+      // Auto-create drafts for new orders
       if (allNewOrderIds.length > 0) {
-        setUploadNewOrderIds(allNewOrderIds);
-        setShowUploadEmailPrompt(true);
+        showAlert('info', `Creating ${allNewOrderIds.length} email drafts in Gmail...`);
+        try {
+          const emailRes = await fetch('/api/send-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ orderIds: allNewOrderIds, status: 'Order Placed' }),
+          });
+          const emailData = await emailRes.json();
+          if (emailRes.ok && emailData.sent > 0) {
+            showAlert('success', `Upload complete! ${totalNew} new orders + ${emailData.sent} drafts created in Gmail`);
+          } else {
+            showAlert('success', `Upload complete! ${totalNew} new, ${totalUpdated} updated`);
+          }
+          fetchEmailStats();
+          fetchEmailedOrders();
+        } catch {
+          showAlert('success', `Upload complete! ${totalNew} new, ${totalUpdated} updated (drafts failed)`);
+        }
       }
     } catch { showAlert('error', 'Upload failed'); }
     finally { setUploading(false); }
@@ -485,7 +507,7 @@ export default function AdminDashboard() {
   const navItems = [
     { id: 'orders' as TabType, label: 'Orders', icon: ShoppingBag, show: true },
     { id: 'upload' as TabType, label: 'Upload CSV', icon: Upload, show: hasPermission('upload_csv') },
-    { id: 'businesses' as TabType, label: 'Businesses', icon: Building2, show: hasPermission('manage_businesses') },
+    { id: 'settings' as TabType, label: 'Settings', icon: Settings, show: hasPermission('manage_businesses') },
     { id: 'team' as TabType, label: 'Team', icon: Users, show: hasPermission('manage_team') },
   ].filter((i) => i.show);
 
@@ -696,13 +718,6 @@ export default function AdminDashboard() {
                   <span style={{ fontSize: '0.875rem', color: 'var(--fg-muted)' }}>selected</span>
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
                     <button className="btn btn-primary btn-sm" onClick={() => setShowStatusModal(true)}>Update Status</button>
-                    <button className="btn btn-sm" disabled={sendingEmail}
-                      style={{ background: 'var(--success)', color: 'white', border: 'none', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                      onClick={() => { setEmailStatus(''); setShowEmailModal(true); }}
-                    >
-                      <Mail size={14} />
-                      Create Drafts
-                    </button>
                     <button className="btn btn-outline btn-sm" onClick={() => setSelectedOrders(new Set())}>Clear</button>
                   </div>
                 </div>
@@ -874,61 +889,83 @@ export default function AdminDashboard() {
           )}
 
           {/* ════════ BUSINESSES TAB ════════ */}
-          {activeTab === 'businesses' && hasPermission('manage_businesses') && (
+          {/* ════════ SETTINGS TAB ════════ */}
+          {activeTab === 'settings' && hasPermission('manage_businesses') && (
             <div className="space-y-6 animate-fade-in-up">
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <h2 className="page-title">Businesses</h2>
-                  <p className="page-subtitle">Manage brand logos and tracking page branding</p>
-                </div>
-                <button className="btn btn-primary" onClick={() => { setEditBiz(null); setBizForm({ name: '', logoUrl: '', supportEmail: '', supportPhone: '', isDefault: false }); setShowBizModal(true); }}>
-                  <Plus size={16} /> Add Business
-                </button>
+              <div>
+                <h2 className="page-title">Brand Settings</h2>
+                <p className="page-subtitle">Your brand name and logo appear on tracking pages and email templates</p>
               </div>
 
               <div className="info-box">
                 <Info size={16} />
                 <div>
                   <p className="info-box-text">
-                    Each business can have its own logo and name. When you upload orders, assign them to a business — customers will see that branding on their tracking page.
+                    These settings apply to <strong>all orders</strong>. Customers will see this brand name and logo on their tracking page and in email notifications.
                   </p>
                 </div>
               </div>
 
-              {businesses.length === 0 ? (
-                <div className="empty-state">
-                  <Building2 size={40} />
-                  <div className="empty-state-title">No businesses yet</div>
-                  <div className="empty-state-text">Add a business to brand your tracking pages</div>
-                </div>
-              ) : (
-                <div className="businesses-grid">
-                  {businesses.map((biz) => (
-                    <div key={biz.id} className="business-card">
-                      <div className="business-logo">
-                        {biz.logo_url ? (
-                          <img src={biz.logo_url} alt={biz.name} />
-                        ) : (
-                          <span className="business-logo-letter">{biz.name.charAt(0)}</span>
-                        )}
-                      </div>
-                      <div className="business-info">
-                        <div className="business-name">
-                          {biz.name}
-                          {biz.is_default && <span className="status-pill status-pill-delivered" style={{ marginLeft: '0.5rem' }}>Default</span>}
-                        </div>
-                        <div className="business-meta">
-                          {[biz.support_email, biz.support_phone].filter(Boolean).join(' • ') || 'No contact info'}
-                        </div>
-                      </div>
-                      <div className="business-actions">
-                        <button className="btn-icon" onClick={() => openEditBiz(biz)} title="Edit"><Eye size={16} /></button>
-                        <button className="btn-icon" onClick={() => handleDeleteBusiness(biz.id)} title="Delete" style={{ color: 'var(--danger)' }}><Trash2 size={16} /></button>
-                      </div>
+              <div className="tf-card" style={{ padding: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
+                  {brandForm.logoUrl ? (
+                    <img src={brandForm.logoUrl.includes('drive.google.com') ? brandForm.logoUrl.replace(/\/file\/d\/([^/]+).*/, '/uc?export=view&id=$1') : brandForm.logoUrl} alt="Logo" style={{ width: '4rem', height: '4rem', borderRadius: '0.75rem', objectFit: 'cover', border: '2px solid var(--border)' }} />
+                  ) : (
+                    <div style={{ width: '4rem', height: '4rem', borderRadius: '0.75rem', background: 'var(--primary-light)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem', fontWeight: 700, color: 'var(--primary)' }}>
+                      {brandForm.name ? brandForm.name.charAt(0).toUpperCase() : '?'}
                     </div>
-                  ))}
+                  )}
+                  <div>
+                    <p style={{ fontWeight: 700, fontSize: '1.125rem' }}>{brandForm.name || 'Your Brand Name'}</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>This is how customers see your brand</p>
+                  </div>
                 </div>
-              )}
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                  <div className="form-group">
+                    <label className="form-label">Brand Name *</label>
+                    <input className="form-input" value={brandForm.name} onChange={(e) => setBrandForm({ ...brandForm, name: e.target.value })} placeholder="e.g. My Store" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Logo URL</label>
+                    <input className="form-input" value={brandForm.logoUrl} onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })} placeholder="Google Drive link or direct image URL" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Support Email</label>
+                    <input className="form-input" type="email" value={brandForm.supportEmail} onChange={(e) => setBrandForm({ ...brandForm, supportEmail: e.target.value })} placeholder="support@yourbrand.com" />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Support Phone</label>
+                    <input className="form-input" value={brandForm.supportPhone} onChange={(e) => setBrandForm({ ...brandForm, supportPhone: e.target.value })} placeholder="+91 98765 43210" />
+                  </div>
+                </div>
+
+                <div style={{ marginTop: '1.25rem' }}>
+                  <button className="btn btn-primary" disabled={!brandForm.name || savingBrand} onClick={async () => {
+                    setSavingBrand(true);
+                    try {
+                      const defaultBiz = businesses.find(b => b.is_default) || businesses[0];
+                      const method = defaultBiz ? 'PATCH' : 'POST';
+                      const body = defaultBiz
+                        ? { id: defaultBiz.id, name: brandForm.name, logoUrl: brandForm.logoUrl, supportEmail: brandForm.supportEmail, supportPhone: brandForm.supportPhone, isDefault: true }
+                        : { name: brandForm.name, logoUrl: brandForm.logoUrl, supportEmail: brandForm.supportEmail, supportPhone: brandForm.supportPhone, isDefault: true };
+                      const res = await fetch('/api/businesses', {
+                        method,
+                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                        body: JSON.stringify(body),
+                      });
+                      if (res.ok) {
+                        showAlert('success', 'Brand settings saved!');
+                        fetchBusinesses();
+                      } else { showAlert('error', 'Failed to save'); }
+                    } catch { showAlert('error', 'Failed to save'); }
+                    finally { setSavingBrand(false); }
+                  }}>
+                    {savingBrand ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Check size={14} />}
+                    {savingBrand ? 'Saving...' : 'Save Settings'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -1225,131 +1262,8 @@ export default function AdminDashboard() {
       )}
 
       {/* Batch Email Status Picker Modal */}
-      {showEmailModal && (
-        <div className="modal-overlay" onClick={() => setShowEmailModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h3 className="modal-title">📧 Create Drafts for {selectedOrders.size} Orders</h3>
-                <p className="modal-subtitle">Choose template — drafts will appear in your Gmail</p>
-              </div>
-              <button className="btn-icon" onClick={() => setShowEmailModal(false)}><X size={16} /></button>
-            </div>
-            <div className="space-y-4">
-              <div className="form-group">
-                <label className="form-label">Email Template (Status)</label>
-                <select className="form-select" style={{ width: '100%' }} value={emailStatus} onChange={(e) => setEmailStatus(e.target.value)}>
-                  <option value="">Select template...</option>
-                  {TRACKING_STAGES_WITH_SPECIAL.filter(s => s !== 'Cancelled' && s !== 'RTO').map((s) => (
-                    <option key={s} value={s}>{STAGE_ICONS[s]} {s}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="info-box">
-                <Info size={16} />
-                <div>
-                  <p className="info-box-text">
-                    This will create <strong>Gmail drafts</strong> with the <strong>{emailStatus || '...'}</strong> template for all selected orders that have an email address. You can review and send them from your Gmail.
-                  </p>
-                </div>
-              </div>
-              <div className="modal-actions">
-                <button className="btn btn-outline" onClick={() => setShowEmailModal(false)}>Cancel</button>
-                <button
-                  className="btn btn-primary"
-                  disabled={!emailStatus || sendingEmail}
-                  onClick={async () => {
-                    setSendingEmail(true);
-                    try {
-                      const res = await fetch('/api/send-email', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ orderIds: Array.from(selectedOrders), status: emailStatus }),
-                      });
-                      const data = await res.json();
-                      if (res.ok) {
-                        if (data.sent > 0) {
-                          const skipMsg = data.skipped > 0 ? ` | ⏭ ${data.skipped} already sent` : '';
-                          const noMsg = data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} no email` : '';
-                          showAlert('success', `📧 ${data.sent} drafts created in Gmail${skipMsg}${noMsg}`);
-                          setShowEmailModal(false);
-                          setSelectedOrders(new Set());
-                          fetchEmailStats();
-                          fetchEmailedOrders();
-                        } else {
-                          const skipMsg = data.skipped > 0 ? ` | All ${data.skipped} already sent for this status` : '';
-                          const errMsg = data.errors?.length > 0 ? ` | Error: ${data.errors[0]}` : '';
-                          showAlert('error', `0 drafts created${skipMsg}${errMsg}`);
-                        }
-                      } else { showAlert('error', data.error || 'Email sending failed'); }
-                    } catch { showAlert('error', 'Email sending failed'); }
-                    finally { setSendingEmail(false); }
-                  }}
-                >
-                  {sendingEmail ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
-                  {sendingEmail ? 'Creating...' : 'Create Drafts'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
       )}
 
-      {/* Upload Email Prompt Modal */}
-      {showUploadEmailPrompt && (
-        <div className="modal-overlay" onClick={() => setShowUploadEmailPrompt(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div>
-                <h3 className="modal-title">📧 Send Order Confirmation Emails?</h3>
-                <p className="modal-subtitle">{uploadNewOrderIds.length} new orders were added</p>
-              </div>
-              <button className="btn-icon" onClick={() => setShowUploadEmailPrompt(false)}><X size={16} /></button>
-            </div>
-            <div className="space-y-4">
-              <div className="info-box">
-                <Mail size={16} />
-                <div>
-                  <p className="info-box-text">
-                    Send <strong>&quot;Order Placed&quot;</strong> confirmation emails to all {uploadNewOrderIds.length} newly added orders that have email addresses?
-                  </p>
-                </div>
-              </div>
-              <div className="modal-actions">
-                <button className="btn btn-outline" onClick={() => { setShowUploadEmailPrompt(false); setUploadNewOrderIds([]); }}>
-                  Skip
-                </button>
-                <button
-                  className="btn btn-primary"
-                  disabled={sendingUploadEmails}
-                  onClick={async () => {
-                    setSendingUploadEmails(true);
-                    try {
-                      const res = await fetch('/api/send-email', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-                        body: JSON.stringify({ orderIds: uploadNewOrderIds, status: 'Order Placed' }),
-                      });
-                      if (res.ok) {
-                        const data = await res.json();
-                        showAlert('success', `📧 ${data.sent} drafts created in Gmail${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
-                      } else { showAlert('error', 'Email sending failed'); }
-                    } catch { showAlert('error', 'Email sending failed'); }
-                    finally {
-                      setSendingUploadEmails(false);
-                      setShowUploadEmailPrompt(false);
-                      setUploadNewOrderIds([]);
-                    }
-                  }}
-                >
-                  {sendingUploadEmails ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
-                  {sendingUploadEmails ? 'Creating...' : 'Create Drafts'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Select Range Modal */}
       {showRangeModal && (
