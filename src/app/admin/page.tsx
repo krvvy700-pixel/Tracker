@@ -382,44 +382,6 @@ export default function AdminDashboard() {
     } catch { /* ignore */ }
   };
 
-  /* ═══ BUSINESSES ═══ */
-  const handleSaveBusiness = async () => {
-    try {
-      const method = editBiz ? 'PATCH' : 'POST';
-      const body = editBiz
-        ? { id: editBiz.id, name: bizForm.name, logoUrl: bizForm.logoUrl, supportEmail: bizForm.supportEmail, supportPhone: bizForm.supportPhone, isDefault: bizForm.isDefault }
-        : { name: bizForm.name, logoUrl: bizForm.logoUrl, supportEmail: bizForm.supportEmail, supportPhone: bizForm.supportPhone, isDefault: bizForm.isDefault };
-      const res = await fetch('/api/businesses', {
-        method,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        showAlert('success', editBiz ? 'Business updated' : 'Business created');
-        setShowBizModal(false); setEditBiz(null);
-        setBizForm({ name: '', logoUrl: '', supportEmail: '', supportPhone: '', isDefault: false });
-        fetchBusinesses();
-      } else {
-        const data = await res.json();
-        showAlert('error', data.error || 'Failed');
-      }
-    } catch { showAlert('error', 'Failed'); }
-  };
-
-  const handleDeleteBusiness = async (id: string) => {
-    if (!confirm('Delete this business? Orders will be unlinked.')) return;
-    try {
-      await fetch(`/api/businesses?id=${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-      fetchBusinesses(); showAlert('success', 'Business deleted');
-    } catch { /* ignore */ }
-  };
-
-  const openEditBiz = (biz: Business) => {
-    setEditBiz(biz);
-    setBizForm({ name: biz.name, logoUrl: biz.logo_url || '', supportEmail: biz.support_email || '', supportPhone: biz.support_phone || '', isDefault: biz.is_default });
-    setShowBizModal(true);
-  };
-
   /* ═══ HELPERS ═══ */
   const copyTrackingLink = (trackingToken: string) => {
     const link = `${window.location.origin}/track/${trackingToken}`;
