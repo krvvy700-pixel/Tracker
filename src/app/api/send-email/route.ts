@@ -125,12 +125,12 @@ export async function POST(request: NextRequest) {
           ordersWithoutEmail: noEmail.length,
           templateExists,
           statusRequested: status,
-          gmailConfigured: !!process.env.GMAIL_USER,
+          gmailConfigured: !!process.env.GMAIL_SCRIPT_URL,
         },
       });
     }
 
-    // Send via Gmail
+    // Create drafts via Google Apps Script
     const result = await sendBatchEmails(emails);
 
     // Log to email_logs table
@@ -157,8 +157,7 @@ export async function POST(request: NextRequest) {
       skipped: skipped.length,
       message: `${result.sent} emails sent, ${result.failed} failed, ${skipped.length} already sent, ${noEmail.length} have no email`,
       debug: {
-        gmailConfigured: !!process.env.GMAIL_USER,
-        gmailPasswordSet: !!process.env.GMAIL_APP_PASSWORD,
+        scriptConfigured: !!process.env.GMAIL_SCRIPT_URL,
         baseUrl: BASE_URL || 'NOT SET',
       },
     });

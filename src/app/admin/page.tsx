@@ -701,7 +701,7 @@ export default function AdminDashboard() {
                       onClick={() => { setEmailStatus(''); setShowEmailModal(true); }}
                     >
                       <Mail size={14} />
-                      Send Email
+                      Create Drafts
                     </button>
                     <button className="btn btn-outline btn-sm" onClick={() => setSelectedOrders(new Set())}>Clear</button>
                   </div>
@@ -1230,8 +1230,8 @@ export default function AdminDashboard() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div>
-                <h3 className="modal-title">📧 Send Email to {selectedOrders.size} Orders</h3>
-                <p className="modal-subtitle">Choose which email template to send</p>
+                <h3 className="modal-title">📧 Create Drafts for {selectedOrders.size} Orders</h3>
+                <p className="modal-subtitle">Choose template — drafts will appear in your Gmail</p>
               </div>
               <button className="btn-icon" onClick={() => setShowEmailModal(false)}><X size={16} /></button>
             </div>
@@ -1249,7 +1249,7 @@ export default function AdminDashboard() {
                 <Info size={16} />
                 <div>
                   <p className="info-box-text">
-                    This will send a professional tracking email with the <strong>{emailStatus || '...'}</strong> template to all selected orders that have an email address.
+                    This will create <strong>Gmail drafts</strong> with the <strong>{emailStatus || '...'}</strong> template for all selected orders that have an email address. You can review and send them from your Gmail.
                   </p>
                 </div>
               </div>
@@ -1271,7 +1271,7 @@ export default function AdminDashboard() {
                         if (data.sent > 0) {
                           const skipMsg = data.skipped > 0 ? ` | ⏭ ${data.skipped} already sent` : '';
                           const noMsg = data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} no email` : '';
-                          showAlert('success', `📧 ${data.sent} emails sent${skipMsg}${noMsg}`);
+                          showAlert('success', `📧 ${data.sent} drafts created in Gmail${skipMsg}${noMsg}`);
                           setShowEmailModal(false);
                           setSelectedOrders(new Set());
                           fetchEmailStats();
@@ -1279,7 +1279,7 @@ export default function AdminDashboard() {
                         } else {
                           const skipMsg = data.skipped > 0 ? ` | All ${data.skipped} already sent for this status` : '';
                           const errMsg = data.errors?.length > 0 ? ` | Error: ${data.errors[0]}` : '';
-                          showAlert('error', `0 new emails sent${skipMsg}${errMsg}`);
+                          showAlert('error', `0 drafts created${skipMsg}${errMsg}`);
                         }
                       } else { showAlert('error', data.error || 'Email sending failed'); }
                     } catch { showAlert('error', 'Email sending failed'); }
@@ -1287,7 +1287,7 @@ export default function AdminDashboard() {
                   }}
                 >
                   {sendingEmail ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
-                  {sendingEmail ? 'Sending...' : 'Send Emails'}
+                  {sendingEmail ? 'Creating...' : 'Create Drafts'}
                 </button>
               </div>
             </div>
@@ -1332,7 +1332,7 @@ export default function AdminDashboard() {
                       });
                       if (res.ok) {
                         const data = await res.json();
-                        showAlert('success', `📧 ${data.sent} emails sent${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
+                        showAlert('success', `📧 ${data.sent} drafts created in Gmail${data.noEmail > 0 ? ` | ⚠️ ${data.noEmail} have no email` : ''}`);
                       } else { showAlert('error', 'Email sending failed'); }
                     } catch { showAlert('error', 'Email sending failed'); }
                     finally {
@@ -1343,7 +1343,7 @@ export default function AdminDashboard() {
                   }}
                 >
                   {sendingUploadEmails ? <Loader2 size={14} style={{ animation: 'spin 0.6s linear infinite' }} /> : <Mail size={14} />}
-                  {sendingUploadEmails ? 'Sending...' : 'Send Emails'}
+                  {sendingUploadEmails ? 'Creating...' : 'Create Drafts'}
                 </button>
               </div>
             </div>

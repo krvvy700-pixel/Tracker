@@ -1,18 +1,7 @@
-import nodemailer from 'nodemailer';
+// Gmail Draft Creator — sends email data to Google Apps Script
+// which creates drafts in user's Gmail inbox
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  pool: true,           // Reuse one SMTP connection for all emails
-  maxConnections: 1,    // Only 1 connection to avoid "too many logins"
-  maxMessages: 100,     // Send up to 100 emails per connection
-  auth: {
-    user: process.env.GMAIL_USER || '',
-    pass: process.env.GMAIL_APP_PASSWORD || '',
-  },
-});
-
-const FROM_EMAIL = process.env.GMAIL_USER || '';
-const FROM_NAME = process.env.GMAIL_FROM_NAME || 'ShipTrack';
+const SCRIPT_URL = process.env.GMAIL_SCRIPT_URL || '';
 
 interface EmailPayload {
   to: string;
@@ -24,56 +13,69 @@ export async function sendEmail({ to, subject, html }: EmailPayload): Promise<{ 
   if (!to || !to.includes('@')) {
     return { success: false, error: 'Invalid email address' };
   }
-
-  if (!FROM_EMAIL) {
-    return { success: false, error: 'GMAIL_USER not configured' };
-  }
-
-  try {
-    await transporter.sendMail({
-      from: `"${FROM_NAME}" <${FROM_EMAIL}>`,
-      to,
-      subject,
-      html,
-    });
-    return { success: true };
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown Gmail error';
-    console.error(`Gmail send failed to ${to}:`, message);
-    return { success: false, error: message };
-  }
+  // Single email — delegate to batch
+  const result = await sendBatchEmails([{ to, subject, html }]);
+  return result.sent > 0 ? { success: true } : { success: false, error: result.errors[0] || 'Failed to create draft' };
 }
 
-// Batch send — sequential with delays to stay under Gmail rate limit
+// Create Gmail drafts via Google Apps Script
 export async function sendBatchEmails(
   emails: EmailPayload[]
 ): Promise<{ sent: number; failed: number; errors: string[] }> {
-  let sent = 0;
-  let failed = 0;
-  const errors: string[] = [];
+  if (!SCRIPT_URL) {
+    return { sent: 0, failed: emails.length, errors: ['GMAIL_SCRIPT_URL not configured — set it in Vercel env vars'] };
+  }
 
-  // Send one at a time with a short delay — pool reuses the same connection
-  for (let i = 0; i < emails.length; i++) {
-    const result = await sendEmail(emails[i]);
+  if (emails.length === 0) {
+    return { sent: 0, failed: 0, errors: [] };
+  }
 
-    if (result.success) {
-      sent++;
-    } else {
-      failed++;
-      if (result.error) errors.push(result.error);
-      // If we get a rate limit error, stop sending
-      if (result.error?.includes('Too many') || result.error?.includes('limit')) {
-        errors.push(`Stopped after ${i + 1}/${emails.length} — Gmail rate limit hit`);
-        failed += emails.length - i - 1;
-        break;
+  try {
+    // Google Apps Script has a payload limit, so batch into chunks of 50
+    let totalCreated = 0;
+    let totalFailed = 0;
+    const allErrors: string[] = [];
+
+    const CHUNK = 50;
+    for (let i = 0; i < emails.length; i += CHUNK) {
+      const chunk = emails.slice(i, i + CHUNK);
+
+      const res = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ emails: chunk }),
+        // Google Apps Script redirects on POST — follow it
+        redirect: 'follow',
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => 'Unknown error');
+        allErrors.push(`Script returned ${res.status}: ${text.slice(0, 100)}`);
+        totalFailed += chunk.length;
+        continue;
+      }
+
+      const data = await res.json().catch(() => null);
+
+      if (data && data.success) {
+        totalCreated += data.drafts || 0;
+        totalFailed += data.failed || 0;
+        if (data.errors) allErrors.push(...data.errors);
+      } else {
+        allErrors.push(data?.error || 'Unknown script error');
+        totalFailed += chunk.length;
+      }
+
+      // Small pause between chunks
+      if (i + CHUNK < emails.length) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     }
 
-    // Small delay between emails to be gentle on Gmail
-    if (i < emails.length - 1) {
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+    return { sent: totalCreated, failed: totalFailed, errors: allErrors.slice(0, 5) };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    console.error('Gmail draft creation failed:', message);
+    return { sent: 0, failed: emails.length, errors: [message] };
   }
-
-  return { sent, failed, errors: errors.slice(0, 5) };
 }
