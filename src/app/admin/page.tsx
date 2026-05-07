@@ -889,8 +889,27 @@ export default function AdminDashboard() {
                     <input className="form-input" value={brandForm.name} onChange={(e) => setBrandForm({ ...brandForm, name: e.target.value })} placeholder="e.g. My Store" />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Logo URL</label>
-                    <input className="form-input" value={brandForm.logoUrl} onChange={(e) => setBrandForm({ ...brandForm, logoUrl: e.target.value })} placeholder="Google Drive link or direct image URL" />
+                    <label className="form-label">Brand Logo</label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                      <label className="btn btn-outline btn-sm" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                        <Upload size={14} />
+                        Upload Image
+                        <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 500 * 1024) { showAlert('error', 'Logo must be under 500KB'); return; }
+                          const reader = new FileReader();
+                          reader.onload = () => setBrandForm({ ...brandForm, logoUrl: reader.result as string });
+                          reader.readAsDataURL(file);
+                        }} />
+                      </label>
+                      {brandForm.logoUrl && (
+                        <button className="btn-icon" onClick={() => setBrandForm({ ...brandForm, logoUrl: '' })} title="Remove logo" style={{ color: 'var(--danger)' }}>
+                          <X size={14} />
+                        </button>
+                      )}
+                      <span style={{ fontSize: '0.75rem', color: 'var(--fg-muted)' }}>PNG, JPG — max 500KB</span>
+                    </div>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Support Email</label>
