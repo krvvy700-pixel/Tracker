@@ -35,11 +35,17 @@ export async function POST(request: NextRequest) {
     }
 
     const csvText = await file.text();
-    const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: true });
+    const parsed = Papa.parse(csvText, {
+      header: true,
+      skipEmptyLines: 'greedy',  // skip blank/whitespace-only rows
+      relaxQuotes: true,          // allow unescaped quotes inside fields (fixes "MissingQuotes")
+      relaxColumnCount: true,     // allow rows with fewer/more columns (fixes "TooFewFields")
+    });
 
-    if (parsed.errors.length > 0) {
+    // Only block if we got zero rows — minor quote/column errors are tolerated
+    if (!parsed.data || (parsed.data as Record<string, string>[]).length === 0) {
       return NextResponse.json(
-        { error: 'CSV parsing errors', details: parsed.errors.slice(0, 5) },
+        { error: 'CSV parsing failed — no valid rows found', details: parsed.errors.slice(0, 5) },
         { status: 400 }
       );
     }
