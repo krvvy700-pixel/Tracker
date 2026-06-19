@@ -145,7 +145,7 @@ export async function PATCH(request: NextRequest) {
   }
 }
 
-// DELETE - delete individual order and all related data
+// DELETE - delete individual order OR all orders
 export async function DELETE(request: NextRequest) {
   const user = getAuthFromRequest(request);
   if (!user || user.role !== 'admin') {
@@ -153,13 +153,24 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    const { orderId } = await request.json();
+    const body = await request.json();
+    const { orderId, deleteAll } = body;
 
+    // ── DELETE ALL ORDERS ──
+    if (deleteAll === true) {
+      await getSupabaseAdmin().from('email_logs').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await getSupabaseAdmin().from('tracking_history').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await getSupabaseAdmin().from('order_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      const { error } = await getSupabaseAdmin().from('orders').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ success: true, deleted: 'all' });
+    }
+
+    // ── DELETE SINGLE ORDER ──
     if (!orderId) {
       return NextResponse.json({ error: 'orderId required' }, { status: 400 });
     }
 
-    // Delete in order: items → history → email_logs → order (FK constraints)
     await getSupabaseAdmin().from('order_items').delete().eq('order_id', orderId);
     await getSupabaseAdmin().from('tracking_history').delete().eq('order_id', orderId);
     await getSupabaseAdmin().from('email_logs').delete().eq('order_id', orderId);
@@ -174,3 +185,4 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Delete failed' }, { status: 500 });
   }
 }
+

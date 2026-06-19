@@ -40,6 +40,18 @@ function cleanString(val: unknown): string {
   return String(val).trim();
 }
 
+// Strip decorative/corrupted unicode symbols from product names
+// Removes geometric shapes (◆◇▲▼), enclosed alphanumerics, dingbats, etc.
+function cleanProductName(val: unknown): string {
+  if (val === null || val === undefined) return '';
+  return String(val)
+    .replace(/[\u2500-\u27FF]/g, '')  // Box Drawing, Geometric Shapes, Misc Symbols
+    .replace(/[\u2E80-\u2EFF]/g, '')  // CJK Radicals
+    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Emojis / pictographs
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function cleanCSVData(rawRows: Record<string, string>[]): {
   orders: CleanedOrder[];
   stats: { total: number; unique: number; multiItem: number; cancelled: number };
@@ -52,7 +64,7 @@ export function cleanCSVData(rawRows: Record<string, string>[]): {
 
     const item: CleanedItem = {
       brand: cleanString(row[CSV_COLUMN_MAP.brand]),
-      product_name: cleanString(row[CSV_COLUMN_MAP.product_name]),
+      product_name: cleanProductName(row[CSV_COLUMN_MAP.product_name]),
       quantity: parseInt(cleanString(row[CSV_COLUMN_MAP.quantity])) || 1,
       price: parseFloat(cleanString(row[CSV_COLUMN_MAP.price])) || 0,
     };

@@ -446,6 +446,25 @@ export default function AdminDashboard() {
     setSelectedOrders(next);
   };
 
+  const handleDeleteAllOrders = async () => {
+    const confirmed = window.prompt('This will permanently delete ALL orders. Type CONFIRM to proceed:');
+    if (confirmed !== 'CONFIRM') { showAlert('error', 'Cancelled — you must type CONFIRM exactly'); return; }
+    try {
+      const res = await fetch('/api/orders', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ deleteAll: true }),
+      });
+      if (res.ok) {
+        showAlert('success', 'All orders deleted successfully');
+        fetchOrders();
+      } else {
+        const d = await res.json();
+        showAlert('error', d.error || 'Delete failed');
+      }
+    } catch { showAlert('error', 'Delete failed'); }
+  };
+
   const logout = () => {
     localStorage.removeItem('auth_token');
     localStorage.removeItem('auth_user');
@@ -947,6 +966,26 @@ export default function AdminDashboard() {
                   </button>
                 </div>
               </div>
+
+              {/* Danger Zone */}
+              {user?.role === 'admin' && (
+                <div className="tf-card" style={{ padding: '1.5rem', border: '1.5px solid var(--danger)', marginTop: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                    <Trash2 size={16} style={{ color: 'var(--danger)' }} />
+                    <span style={{ fontWeight: 700, fontSize: '0.9375rem', color: 'var(--danger)' }}>Danger Zone</span>
+                  </div>
+                  <p style={{ fontSize: '0.8125rem', color: 'var(--fg-muted)', marginBottom: '1rem' }}>
+                    Permanently deletes <strong>all orders</strong>, order items, tracking history, and email logs from the database. This action <strong>cannot be undone</strong>.
+                  </p>
+                  <button
+                    className="btn"
+                    style={{ background: 'var(--danger)', color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                    onClick={handleDeleteAllOrders}
+                  >
+                    <Trash2 size={14} /> Delete All Orders
+                  </button>
+                </div>
+              )}
             </div>
           )}
 

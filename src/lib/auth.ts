@@ -9,7 +9,7 @@ export interface AuthUser {
 
 // Simple token-based auth using base64 encoded credentials
 export function generateToken(username: string, role: string): string {
-  const payload = JSON.stringify({ username, role, exp: Date.now() + 24 * 60 * 60 * 1000 });
+  const payload = JSON.stringify({ username, role, exp: Date.now() + 7 * 24 * 60 * 60 * 1000 });
   return Buffer.from(payload).toString('base64');
 }
 
