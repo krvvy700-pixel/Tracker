@@ -71,3 +71,84 @@ function testDraft() {
   GmailApp.createDraft('test@example.com', 'Test Draft', 'This is a test draft from ShipTrack');
   Logger.log('Test draft created! Check your Gmail Drafts folder.');
 }
+
+
+// ═══════════════════════════════════════════════
+// AUTO SEND DRAFTS
+// ═══════════════════════════════════════════════
+//
+// HOW TO USE:
+//   Option A — Run manually:
+//     Select "sendDrafts" from the function dropdown → click ▶ Run
+//
+//   Option B — Auto-send on a schedule:
+//     Select "setupAutoSendTrigger" → click ▶ Run (do this ONCE)
+//     It will send 5 drafts every hour automatically.
+//     To stop: go to Triggers (clock icon) → delete the trigger.
+//
+//   Change SEND_COUNT below to send more or fewer at a time.
+// ═══════════════════════════════════════════════
+
+var SEND_COUNT = 5; // ← change this number to send more/fewer drafts per run
+
+function sendDrafts() {
+  var drafts = GmailApp.getDrafts();
+
+  if (drafts.length === 0) {
+    Logger.log('No drafts found.');
+    return;
+  }
+
+  var toSend = Math.min(SEND_COUNT, drafts.length);
+  var sent = 0;
+  var failed = 0;
+
+  Logger.log('Found ' + drafts.length + ' drafts. Sending ' + toSend + '...');
+
+  for (var i = 0; i < toSend; i++) {
+    try {
+      var subject = drafts[i].getMessage().getSubject();
+      drafts[i].send();
+      sent++;
+      Logger.log('✅ Sent ' + (i + 1) + ': ' + subject);
+      Utilities.sleep(500); // 0.5s delay between sends to avoid rate limits
+    } catch (err) {
+      failed++;
+      Logger.log('❌ Failed draft ' + (i + 1) + ': ' + err.toString());
+    }
+  }
+
+  Logger.log('Done! Sent: ' + sent + ' | Failed: ' + failed + ' | Remaining drafts: ' + (drafts.length - sent));
+}
+
+// ── Run this ONCE to set up automatic sending every hour ──
+function setupAutoSendTrigger() {
+  // Remove any existing sendDrafts triggers to avoid duplicates
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'sendDrafts') {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+
+  // Create new trigger: run sendDrafts every 1 hour
+  ScriptApp.newTrigger('sendDrafts')
+    .timeBased()
+    .everyHours(1)
+    .create();
+
+  Logger.log('✅ Auto-send trigger created! Will send ' + SEND_COUNT + ' drafts every hour.');
+}
+
+// ── Run this to STOP auto-sending ──
+function removeAutoSendTrigger() {
+  var triggers = ScriptApp.getProjectTriggers();
+  var removed = 0;
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === 'sendDrafts') {
+      ScriptApp.deleteTrigger(triggers[i]);
+      removed++;
+    }
+  }
+  Logger.log('Removed ' + removed + ' trigger(s). Auto-send stopped.');
+}
